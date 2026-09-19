@@ -1,0 +1,11 @@
+{
+  "target": "asset",
+  "mode": "single",
+  "prompt": "",
+  "role": "",
+  "input": "/workspace/assets/sprites/trains/diesel-raw.jpg",
+  "threshold": 135,
+  "edge_threshold": 180,
+  "duration": 200,
+  "single_size": 320
+}

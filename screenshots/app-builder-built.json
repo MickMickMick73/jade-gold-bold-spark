@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Iron Baron",
+      "hasCanvas": true,
+      "bodyTextLen": 171,
+      "bodyTextHash": "56f2e9a1d6f37e6b9e5e292901bfa7f3dcb657fd4a8d202acfb08774f8d61325",
+      "bodyTextPrefix": "RAILROAD EMPIRE Iron Baron Lay iron, buy locomotives, and bankru",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Iron Baron",
+      "hasCanvas": true,
+      "bodyTextLen": 171,
+      "bodyTextHash": "56f2e9a1d6f37e6b9e5e292901bfa7f3dcb657fd4a8d202acfb08774f8d61325",
+      "bodyTextPrefix": "RAILROAD EMPIRE Iron Baron Lay iron, buy locomotives, and bankru",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

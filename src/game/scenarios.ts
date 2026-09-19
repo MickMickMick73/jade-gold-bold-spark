@@ -1,0 +1,153 @@
+import type { ScenarioDef } from "./types";
+
+export const SCENARIOS: ScenarioDef[] = [
+  {
+    id: "pioneer",
+    title: "The Iron Pioneer",
+    blurb: "1830. A green continent and a pocket of silver. Connect the cities, grow an empire, and die rich.",
+    region: "columbia",
+    size: "medium",
+    year: 1830,
+    difficulty: "normal",
+    rivals: 1,
+    cash: 500000,
+    goals: [
+      { kind: "networth", target: 1_000_000, label: "Reach $1,000,000 net worth" },
+      { kind: "connect", target: 6, label: "Serve 6 cities with stations" },
+    ],
+  },
+  {
+    id: "transcon",
+    title: "Sea to Sea",
+    blurb: "1866. Span the continent before the rivals do. East must meet west.",
+    region: "frontier",
+    size: "large",
+    year: 1866,
+    difficulty: "normal",
+    rivals: 2,
+    cash: 750000,
+    mapHint: "wide",
+    timeLimit: 1885,
+    goals: [
+      { kind: "connect", target: 10, label: "Serve 10 cities" },
+      { kind: "networth", target: 2_000_000, label: "Reach $2,000,000 net worth" },
+    ],
+  },
+  {
+    id: "coal",
+    title: "The Coal Rush",
+    blurb: "Mines are coughing black gold. Haul 400 loads of coal before the boom fades.",
+    region: "columbia",
+    size: "medium",
+    year: 1852,
+    difficulty: "normal",
+    rivals: 2,
+    cash: 420000,
+    timeLimit: 1872,
+    goals: [{ kind: "cargo", target: 400, cargo: "coal", label: "Deliver 400 loads of coal" }],
+  },
+  {
+    id: "mail",
+    title: "Royal Mail",
+    blurb: "Albion, 1829. The Postmaster will pay the first company to bind the realm with iron.",
+    region: "albion",
+    size: "small",
+    year: 1829,
+    difficulty: "easy",
+    rivals: 1,
+    cash: 380000,
+    mapHint: "dense",
+    goals: [
+      { kind: "connect", target: 8, label: "Serve 8 towns" },
+      { kind: "cargo", target: 200, cargo: "mail", label: "Deliver 200 bags of mail" },
+    ],
+  },
+  {
+    id: "barons",
+    title: "Robber Barons",
+    blurb: "Three companies. One continent. Bankrupt the others or be eaten.",
+    region: "columbia",
+    size: "medium",
+    year: 1870,
+    difficulty: "hard",
+    rivals: 3,
+    cash: 400000,
+    goals: [{ kind: "bankrupt_ai", target: 3, label: "Drive every rival into bankruptcy" }],
+  },
+  {
+    id: "steel",
+    title: "The Steel Age",
+    blurb: "Iron, coal, fire. Complete the industrial chain and flood the cities with steel and goods.",
+    region: "continent",
+    size: "medium",
+    year: 1875,
+    difficulty: "normal",
+    rivals: 2,
+    cash: 550000,
+    goals: [
+      { kind: "cargo", target: 180, cargo: "steel", label: "Deliver 180 loads of steel" },
+      { kind: "cargo", target: 120, cargo: "goods", label: "Deliver 120 loads of goods" },
+    ],
+  },
+  {
+    id: "frontier",
+    title: "Frontier Charter",
+    blurb: "Four lonely towns on a harsh map. Survive, then thrive.",
+    region: "frontier",
+    size: "small",
+    year: 1869,
+    difficulty: "hard",
+    rivals: 1,
+    cash: 280000,
+    mapHint: "islands",
+    goals: [
+      { kind: "connect", target: 4, label: "Serve every town" },
+      { kind: "networth", target: 800000, label: "Reach $800,000 net worth" },
+    ],
+  },
+  {
+    id: "empire",
+    title: "A Twenty-Year Empire",
+    blurb: "Large map. Rivals at your heels. Be the richest house when the century turns.",
+    region: "columbia",
+    size: "large",
+    year: 1880,
+    difficulty: "normal",
+    rivals: 3,
+    cash: 600000,
+    timeLimit: 1900,
+    goals: [{ kind: "year_worth", target: 3_000_000, label: "Hold $3,000,000 net worth by 1900" }],
+  },
+  {
+    id: "outback",
+    title: "Southern Gauge",
+    blurb: "A wide dry country and long, thirsty hauls. Link the coast to the interior.",
+    region: "outback",
+    size: "medium",
+    year: 1865,
+    difficulty: "normal",
+    rivals: 1,
+    cash: 480000,
+    goals: [
+      { kind: "connect", target: 7, label: "Serve 7 towns" },
+      { kind: "cargo", target: 150, cargo: "cattle", label: "Deliver 150 loads of livestock" },
+    ],
+  },
+];
+
+export function scenarioById(id: string): ScenarioDef | undefined {
+  return SCENARIOS.find((s) => s.id === id);
+}
+
+export const DIFFICULTY_META = {
+  easy: { label: "Easy", cash: 750000, rev: 1.3, cost: 0.8, rivals: 1 },
+  normal: { label: "Normal", cash: 500000, rev: 1, cost: 1, rivals: 2 },
+  hard: { label: "Hard", cash: 320000, rev: 0.85, cost: 1.15, rivals: 3 },
+  magnate: { label: "Magnate", cash: 180000, rev: 0.7, cost: 1.3, rivals: 3 },
+} as const;
+
+export const SIZE_META = {
+  small: { w: 96, h: 96, cities: [12, 16], label: "Small · 96²" },
+  medium: { w: 128, h: 128, cities: [20, 28], label: "Medium · 128²" },
+  large: { w: 176, h: 176, cities: [32, 44], label: "Large · 176²" },
+} as const;
