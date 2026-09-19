@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Cargo, GameState, Speed, Tool } from "./types";
 import type { Settings } from "./save";
 import { defaultSettings, loadSettings } from "./save";
+import type { Cinematic } from "./cinematics";
 import { goalProgress } from "./simulation";
 import { netWorth, playerCompany } from "./economy";
 import { MONTHS, formatCash } from "@/lib/utils";
@@ -19,7 +20,8 @@ export type Screen =
   | "roster"
   | "news"
   | "trainbuy"
-  | "end";
+  | "end"
+  | "cinematic";
 
 export interface HudSnap {
   cash: string;
@@ -58,6 +60,7 @@ interface UIState {
   toast: string | null;
   trainDraft: TrainDraft;
   inspectText: string;
+  cinematic: Cinematic | null;
   setScreen: (s: Screen) => void;
   setOverlay: (s: Screen | null) => void;
   setTool: (t: Tool) => void;
@@ -67,6 +70,7 @@ interface UIState {
   setToast: (t: string | null) => void;
   setDraft: (d: Partial<TrainDraft>) => void;
   setInspect: (t: string) => void;
+  setCinematic: (c: Cinematic | null) => void;
 }
 
 export const emptyHud: HudSnap = {
@@ -123,6 +127,7 @@ export const useGameStore = create<UIState>((set) => ({
   toast: null,
   trainDraft: { locoId: "pioneer", cars: ["pax", "mail"], route: [] },
   inspectText: "",
+  cinematic: null,
   setScreen: (screen) => set({ screen, overlay: null }),
   setOverlay: (overlay) => set({ overlay }),
   setTool: (tool) => set({ tool }),
@@ -141,4 +146,5 @@ export const useGameStore = create<UIState>((set) => ({
   setToast: (toast) => set({ toast }),
   setDraft: (d) => set((st) => ({ trainDraft: { ...st.trainDraft, ...d } })),
   setInspect: (inspectText) => set({ inspectText }),
+  setCinematic: (cinematic) => set({ cinematic }),
 }));

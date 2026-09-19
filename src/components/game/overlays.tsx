@@ -28,6 +28,8 @@ import { CARGO_LABEL, CARGOS } from "@/game/types";
 import { buyTrain, issueBond, repayBond, tradeStock } from "@/game/simulation";
 import { locosForYear, locoById } from "@/game/locomotives";
 import { netWorth, playerCompany } from "@/game/economy";
+import { CinematicOverlay } from "@/components/game/Cinematic";
+import { introCinematic, scenarioPoster, shouldPlayTitle, titleCinematic } from "@/game/cinematics";
 
 function Panel({
   title,
@@ -67,6 +69,13 @@ function Panel({
 
 export function MainMenu() {
   const setScreen = useGameStore((s) => s.setScreen);
+  const setOverlay = useGameStore((s) => s.setOverlay);
+  const setCinematic = useGameStore((s) => s.setCinematic);
+  useEffect(() => {
+    if (!shouldPlayTitle()) return;
+    setCinematic(titleCinematic());
+    setOverlay("cinematic");
+  }, [setCinematic, setOverlay]);
   return (
     <div className="pointer-events-auto absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-bg via-bg/80 to-transparent p-6 sm:justify-center sm:p-12">
       <div className="max-w-md">
@@ -138,7 +147,10 @@ export function NewGameMenu({ scenarioId }: { scenarioId?: string }) {
       year: sc?.year,
       scenario: sc,
     });
+    state.speed = 0;
     engine.startPlay(state);
+    useGameStore.getState().setCinematic(introCinematic(sc?.id ?? "sandbox"));
+    useGameStore.getState().setOverlay("cinematic");
   };
 
   return (
@@ -259,13 +271,16 @@ export function ScenarioMenu() {
             key={s.id}
             type="button"
             onClick={() => setPick(s.id)}
-            className="rounded-md border border-border bg-elevated p-4 text-left hover:border-border-strong"
+            className="overflow-hidden rounded-md border border-border bg-elevated text-left hover:border-border-strong"
           >
+            <img src={scenarioPoster(s.id)} alt="" className="h-28 w-full object-cover" />
+            <div className="p-4">
             <div className="font-display text-base font-semibold text-fg">{s.title}</div>
             <div className="mt-1 text-xs text-muted">
               {s.year} · {s.region} · {DIFFICULTY_META[s.difficulty].label}
             </div>
             <p className="mt-2 text-sm leading-relaxed text-muted">{s.blurb}</p>
+            </div>
           </button>
         ))}
       </div>
@@ -339,6 +354,9 @@ export function HowTo() {
           <span className="text-fg">WASD / arrows</span> pan · <span className="text-fg">wheel</span> zoom ·{" "}
           <span className="text-fg">1–6</span> tools · <span className="text-fg">Space</span> pause ·{" "}
           <span className="text-fg">L</span> ledger · <span className="text-fg">R</span> roster
+        </p>
+        <p>
+          Each scenario opens with a briefing reel and closes with a victory or ruin film. Skip with Space, Enter, or the button.
         </p>
         <p>
           Highways (1915+) and airfields (1928+) steal passengers. Rail a port city and you skim the sea trade. Build your own strip with the Air tool once the twenties arrive.
@@ -831,7 +849,7 @@ export function OverlayRouter() {
   const which: Screen | null = overlay ?? (screen === "playing" ? null : screen);
   return (
     <>
-      {screen === "playing" ? <HUD /> : null}
+      {screen === "playing" && overlay !== "cinematic" ? <HUD /> : null}
       {which === "menu" ? <MainMenu /> : null}
       {which === "new" ? <NewGameMenu /> : null}
       {which === "scenarios" ? <ScenarioMenu /> : null}
@@ -843,6 +861,7 @@ export function OverlayRouter() {
       {which === "news" ? <NewsPanel /> : null}
       {which === "trainbuy" || which === "roster" ? <TrainBuy /> : null}
       {which === "end" ? <EndScreen /> : null}
+      {which === "cinematic" ? <CinematicOverlay /> : null}
     </>
   );
 }

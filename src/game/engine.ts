@@ -9,6 +9,7 @@ import { snapHud, useGameStore } from "./store";
 import { saveSlot } from "./save";
 import { locoById } from "./locomotives";
 import { formatCashFull } from "@/lib/utils";
+import { endingCinematic } from "./cinematics";
 import { loadSprites } from "./sprites";
 
 const PAN = 420;
@@ -42,6 +43,7 @@ export class Engine {
   dragCam: { x: number; y: number; cx: number; cy: number } | null = null;
   autosaveAt = 0;
   hudClock = 0;
+  endingReel = false;
   onResize: () => void;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -125,6 +127,7 @@ export class Engine {
     this.mode = "play";
     this.state = state;
     this.floats = [];
+    this.endingReel = false;
     this.centerOnMap();
     this.cam.zoom = state.mapW >= 160 ? 0.42 : state.mapW >= 120 ? 0.5 : 0.62;
     useGameStore.getState().setHud(snapHud(state));
@@ -293,6 +296,7 @@ export class Engine {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
     if (!this.playingUi() && useGameStore.getState().screen !== "playing") return;
     const st = useGameStore.getState();
+    if (st.overlay === "cinematic") return;
     if (e.code === "Escape") {
       if (st.overlay) st.setOverlay(null);
       else st.setOverlay("pause");
@@ -457,7 +461,12 @@ export class Engine {
         this.hudClock = 0;
         useGameStore.getState().setHud(snapHud(this.state));
         if (this.state.won || this.state.lost) {
-          useGameStore.getState().setOverlay("end");
+          if (!this.endingReel) {
+            this.endingReel = true;
+            const store = useGameStore.getState();
+            store.setCinematic(endingCinematic(this.state.won, this.state.scenarioTitle));
+            store.setOverlay("cinematic");
+          }
         }
       }
       this.autosaveAt += dt;
