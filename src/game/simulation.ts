@@ -31,12 +31,14 @@ export interface SimHooks {
   float: (x: number, y: number, text: string, color?: string) => void;
   news: (headline: string, body: string) => void;
   sfx: (name: "build" | "cash" | "bell" | "break" | "click") => void;
+  locoArrived: (id: string) => void;
 }
 
 const noop: SimHooks = {
   float: () => {},
   news: () => {},
   sfx: () => {},
+  locoArrived: () => {},
 };
 
 export function nextId(state: GameState): number {
@@ -643,6 +645,7 @@ function yearEnd(state: GameState, hooks: SimHooks) {
   const newly = locosForYear(state.year).filter((l) => l.year === state.year);
   for (const l of newly) {
     hooks.news(`${l.name} introduced`, `${l.blurb} Available for purchase at $${l.cost.toLocaleString("en-US")}.`);
+    hooks.locoArrived(l.id);
   }
   if (state.year === 1869) {
     hooks.news("Oil discovered", "Black gold seeps from the desert. Oil fields now appear on the map.");

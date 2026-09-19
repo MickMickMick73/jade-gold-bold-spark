@@ -29,6 +29,7 @@ import { buyTrain, issueBond, repayBond, tradeStock } from "@/game/simulation";
 import { locosForYear, locoById } from "@/game/locomotives";
 import { netWorth, playerCompany } from "@/game/economy";
 import { CinematicOverlay } from "@/components/game/Cinematic";
+import { LocoSheet, LocoThumb } from "@/components/game/LocoSheet";
 import { introCinematic, scenarioPoster, shouldPlayTitle, titleCinematic } from "@/game/cinematics";
 
 function Panel({
@@ -356,7 +357,7 @@ export function HowTo() {
           <span className="text-fg">L</span> ledger · <span className="text-fg">R</span> roster
         </p>
         <p>
-          Each scenario opens with a briefing reel and closes with a victory or ruin film. Skip with Space, Enter, or the button.
+          Each new locomotive arrives with a film of it on the road, then a spec sheet. Click a train on the map or in the roster to see the same.
         </p>
         <p>
           Highways (1915+) and airfields (1928+) steal passengers. Rail a port city and you skim the sea trade. Build your own strip with the Air tool once the twenties arrive.
@@ -715,20 +716,23 @@ export function TrainBuy() {
   return (
     <Panel title="Buy a train" onClose={() => setOverlay(null)} wide>
       <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Locomotive</h3>
-      <div className="mb-4 grid max-h-40 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+      <div className="mb-4 grid max-h-56 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
         {locos.map((l) => (
           <button
             key={l.id}
             type="button"
             onClick={() => setDraft({ locoId: l.id, cars: draft.cars.slice(0, l.capacity) })}
             className={cn(
-              "rounded-md border px-3 py-2 text-left",
+              "flex gap-2 overflow-hidden rounded-md border text-left",
               draft.locoId === l.id ? "border-primary bg-elevated" : "border-border bg-inset",
             )}
           >
+            <LocoThumb id={l.id} className="h-16 w-24 shrink-0" />
+            <div className="min-w-0 py-2 pr-3">
             <div className="text-sm text-fg">{l.name}</div>
             <div className="text-xs text-muted">
               {formatCash(l.cost)} · {l.speed} mph · {l.capacity} cars
+            </div>
             </div>
           </button>
         ))}
@@ -797,6 +801,8 @@ export function TrainBuy() {
 
 function RosterMini() {
   const state = getEngine()?.state;
+  const setOverlay = useGameStore((s) => s.setOverlay);
+  const setLocoFocus = useGameStore((s) => s.setLocoFocus);
   if (!state) return null;
   const list = state.trains.filter((t) => t.companyId === state.playerId);
   if (!list.length) return null;
@@ -804,12 +810,21 @@ function RosterMini() {
     <div className="mt-6 border-t border-border pt-4">
       <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">On the line</h3>
       {list.map((t) => (
-        <div key={t.id} className="flex justify-between py-1 text-sm">
-          <span className="text-fg">{t.name}</span>
-          <span className="tabular text-muted">
+        <button
+          key={t.id}
+          type="button"
+          className="mb-1 flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-elevated"
+          onClick={() => {
+            setLocoFocus({ locoId: t.locoId, trainId: t.id, fromIntro: false });
+            setOverlay("locodetail");
+          }}
+        >
+          <LocoThumb id={t.locoId} className="h-10 w-16 rounded-sm" />
+          <span className="min-w-0 flex-1 truncate text-sm text-fg">{t.name}</span>
+          <span className="tabular text-xs text-muted">
             {t.status} · {formatCash(t.profit)}
           </span>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -849,7 +864,7 @@ export function OverlayRouter() {
   const which: Screen | null = overlay ?? (screen === "playing" ? null : screen);
   return (
     <>
-      {screen === "playing" && overlay !== "cinematic" ? <HUD /> : null}
+      {screen === "playing" && overlay !== "cinematic" && overlay !== "locodetail" ? <HUD /> : null}
       {which === "menu" ? <MainMenu /> : null}
       {which === "new" ? <NewGameMenu /> : null}
       {which === "scenarios" ? <ScenarioMenu /> : null}
@@ -862,6 +877,7 @@ export function OverlayRouter() {
       {which === "trainbuy" || which === "roster" ? <TrainBuy /> : null}
       {which === "end" ? <EndScreen /> : null}
       {which === "cinematic" ? <CinematicOverlay /> : null}
+      {which === "locodetail" ? <LocoSheet /> : null}
     </>
   );
 }

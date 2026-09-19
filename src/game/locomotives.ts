@@ -166,6 +166,14 @@ export function locoById(id: string): LocoDef {
   return LOCOMOTIVES.find((l) => l.id === id) ?? LOCOMOTIVES[0]!;
 }
 
+export function locoPortrait(id: string): string {
+  return `/locos/${id}.jpg`;
+}
+
+export function locoFilm(id: string): string {
+  return `/locos/${id}.mp4`;
+}
+
 export function tilesPerYear(loco: LocoDef): number {
   return 36 + loco.speed * 1.15 + loco.power * 4;
 }

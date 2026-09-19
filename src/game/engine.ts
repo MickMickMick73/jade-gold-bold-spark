@@ -9,7 +9,7 @@ import { snapHud, useGameStore } from "./store";
 import { saveSlot } from "./save";
 import { locoById } from "./locomotives";
 import { formatCashFull } from "@/lib/utils";
-import { endingCinematic } from "./cinematics";
+import { endingCinematic, locoIntroCinematic } from "./cinematics";
 import { loadSprites } from "./sprites";
 
 const PAN = 420;
@@ -44,6 +44,7 @@ export class Engine {
   autosaveAt = 0;
   hudClock = 0;
   endingReel = false;
+  locoQueue: string[] = [];
   onResize: () => void;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -128,6 +129,7 @@ export class Engine {
     this.state = state;
     this.floats = [];
     this.endingReel = false;
+    this.locoQueue = [];
     this.centerOnMap();
     this.cam.zoom = state.mapW >= 160 ? 0.42 : state.mapW >= 120 ? 0.5 : 0.62;
     useGameStore.getState().setHud(snapHud(state));
@@ -168,7 +170,39 @@ export class Engine {
         useGameStore.getState().setToast(headline);
       },
       sfx: (n) => playSfx(n),
+      locoArrived: (id) => {
+        if (this.mode !== "play") return;
+        this.queueLocoIntro(id);
+      },
     };
+  }
+
+  queueLocoIntro(id: string) {
+    this.locoQueue.push(id);
+    this.flushLocoIntro();
+  }
+
+  flushLocoIntro() {
+    const st = useGameStore.getState();
+    if (st.overlay === "cinematic" || st.overlay === "locodetail") return;
+    const id = this.locoQueue.shift();
+    if (!id) {
+      if (this.mode === "play" && this.state && (this.state.won || this.state.lost)) return;
+      if (this.mode === "play" && this.state && this.state.speed === 0) this.state.speed = 1;
+      return;
+    }
+    if (this.state) this.state.speed = 0;
+    st.setLocoFocus({ locoId: id, fromIntro: true });
+    st.setCinematic(locoIntroCinematic(id));
+    st.setOverlay("cinematic");
+  }
+
+  closeLocoSheet() {
+    const st = useGameStore.getState();
+    const fromIntro = st.locoFocus?.fromIntro;
+    st.setOverlay(null);
+    st.setLocoFocus(null);
+    if (fromIntro) this.flushLocoIntro();
   }
 
   tileFromEvent(e: { clientX: number; clientY: number }) {
@@ -297,6 +331,10 @@ export class Engine {
     if (!this.playingUi() && useGameStore.getState().screen !== "playing") return;
     const st = useGameStore.getState();
     if (st.overlay === "cinematic") return;
+    if (st.overlay === "locodetail") {
+      if (e.code === "Escape") this.closeLocoSheet();
+      return;
+    }
     if (e.code === "Escape") {
       if (st.overlay) st.setOverlay(null);
       else st.setOverlay("pause");
@@ -386,6 +424,8 @@ export class Engine {
       const loco = locoById(tr.locoId);
       const load = tr.cars.map((c) => `${CARGO_LABEL[c.cargo]} ${c.amount}`).join(" · ");
       useGameStore.getState().setInspect(`${tr.name}  ·  ${loco.name}\n${load}\nProfit ${formatCashFull(tr.profit)}`);
+      useGameStore.getState().setLocoFocus({ locoId: tr.locoId, trainId: tr.id, fromIntro: false });
+      useGameStore.getState().setOverlay("locodetail");
       return;
     }
     const st = this.state.stations.find((s) => s.x === x && s.y === y);
@@ -527,6 +567,8 @@ export class Engine {
       setZoom: (z: number) => {
         this.cam.zoom = Math.max(0.28, Math.min(2.4, z));
       },
+      queueLocoIntro: (id: string) => this.queueLocoIntro(id),
+      closeLocoSheet: () => this.closeLocoSheet(),
     };
   }
 }
@@ -545,6 +587,8 @@ declare global {
       pan: () => { x: number; y: number; z: number };
       centerOn: (x: number, y: number) => void;
       setZoom: (z: number) => void;
+      queueLocoIntro: (id: string) => void;
+      closeLocoSheet: () => void;
     };
   }
 }

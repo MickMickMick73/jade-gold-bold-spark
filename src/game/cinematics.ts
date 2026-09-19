@@ -1,3 +1,5 @@
+import { locoById, locoFilm, locoPortrait } from "./locomotives";
+
 let titleShown = false;
 export function shouldPlayTitle(): boolean {
   if (titleShown) return false;
@@ -10,7 +12,8 @@ export interface Cinematic {
   poster: string;
   title: string;
   body: string;
-  onDone: "play" | "end" | "menu";
+  onDone: "play" | "end" | "menu" | "locodetail";
+  locoId?: string;
 }
 
 const asset = (id: string) => ({
@@ -96,4 +99,16 @@ export function titleCinematic(): Cinematic {
 
 export function scenarioPoster(id: string): string {
   return BRIEFS[id] ? `/cinematics/${id}.jpg` : "/cinematics/title.jpg";
+}
+
+export function locoIntroCinematic(id: string): Cinematic {
+  const l = locoById(id);
+  return {
+    src: locoFilm(id),
+    poster: locoPortrait(id),
+    title: l.name,
+    body: `${l.year} · ${l.kind === "diesel" ? "Diesel" : "Steam"} · ${l.blurb}`,
+    onDone: "locodetail",
+    locoId: id,
+  };
 }

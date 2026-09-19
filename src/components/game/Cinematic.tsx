@@ -20,6 +20,8 @@ export function CinematicOverlay() {
       setOverlay(null);
     } else if (next === "end") {
       setOverlay("end");
+    } else if (next === "locodetail") {
+      setOverlay("locodetail");
     } else {
       setOverlay(null);
     }
@@ -70,7 +72,13 @@ export function CinematicOverlay() {
         <p className="font-display text-2xl font-semibold tracking-tight text-fg sm:text-4xl">{cin.title}</p>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted sm:text-base">{cin.body}</p>
         <Button className="mt-4 min-h-11" onClick={finish}>
-          {cin.onDone === "play" ? "Lay the iron" : cin.onDone === "end" ? "Continue" : "Skip"}
+          {cin.onDone === "play"
+            ? "Lay the iron"
+            : cin.onDone === "end"
+              ? "Continue"
+              : cin.onDone === "locodetail"
+                ? "See the engine"
+                : "Skip"}
         </Button>
       </div>
     </div>

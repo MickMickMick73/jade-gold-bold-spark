@@ -21,7 +21,8 @@ export type Screen =
   | "news"
   | "trainbuy"
   | "end"
-  | "cinematic";
+  | "cinematic"
+  | "locodetail";
 
 export interface HudSnap {
   cash: string;
@@ -40,6 +41,12 @@ export interface HudSnap {
   scenario: string;
   goals: { label: string; current: number; target: number; done: boolean }[];
   news: { headline: string; body: string; year: number; month: number } | null;
+}
+
+export interface LocoFocus {
+  locoId: string;
+  trainId?: number;
+  fromIntro: boolean;
 }
 
 export interface TrainDraft {
@@ -61,6 +68,7 @@ interface UIState {
   trainDraft: TrainDraft;
   inspectText: string;
   cinematic: Cinematic | null;
+  locoFocus: LocoFocus | null;
   setScreen: (s: Screen) => void;
   setOverlay: (s: Screen | null) => void;
   setTool: (t: Tool) => void;
@@ -71,6 +79,7 @@ interface UIState {
   setDraft: (d: Partial<TrainDraft>) => void;
   setInspect: (t: string) => void;
   setCinematic: (c: Cinematic | null) => void;
+  setLocoFocus: (f: LocoFocus | null) => void;
 }
 
 export const emptyHud: HudSnap = {
@@ -128,6 +137,7 @@ export const useGameStore = create<UIState>((set) => ({
   trainDraft: { locoId: "pioneer", cars: ["pax", "mail"], route: [] },
   inspectText: "",
   cinematic: null,
+  locoFocus: null,
   setScreen: (screen) => set({ screen, overlay: null }),
   setOverlay: (overlay) => set({ overlay }),
   setTool: (tool) => set({ tool }),
@@ -147,4 +157,5 @@ export const useGameStore = create<UIState>((set) => ({
   setDraft: (d) => set((st) => ({ trainDraft: { ...st.trainDraft, ...d } })),
   setInspect: (inspectText) => set({ inspectText }),
   setCinematic: (cinematic) => set({ cinematic }),
+  setLocoFocus: (locoFocus) => set({ locoFocus }),
 }));
