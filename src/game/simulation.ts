@@ -17,6 +17,16 @@ import {
 } from "./types";
 import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line4 } from "./pathfinding";
 import {
+  avoidBlocked,
+  ensureYard,
+  maybeBreakdown,
+  maybeLandslide,
+  migrateYard,
+  shopAtYard,
+  tileBlocked,
+  tickYard,
+} from "./yard";
+import {
   buildCostFor,
   cargoRate,
   costMul,
@@ -32,6 +42,7 @@ export interface SimHooks {
   news: (headline: string, body: string) => void;
   sfx: (name: "build" | "cash" | "bell" | "break" | "click") => void;
   locoArrived: (id: string) => void;
+  incidentOpened: (id: number) => void;
 }
 
 const noop: SimHooks = {
@@ -39,6 +50,7 @@ const noop: SimHooks = {
   news: () => {},
   sfx: () => {},
   locoArrived: () => {},
+  incidentOpened: () => {},
 };
 
 export function nextId(state: GameState): number {
@@ -202,6 +214,7 @@ export function placeStation(
     level: 1,
   };
   state.stations.push(st);
+  ensureYard(state, st.id, x, y, companyId);
   refreshConnected(state);
   if (companyId === state.playerId) {
     hooks.sfx("bell");
@@ -261,6 +274,7 @@ export function buyTrain(
     companyId,
     status: "running",
     brokenFor: 0,
+    wear: 8,
     profit: 0,
     lastPayout: 0,
     age: 0,
@@ -280,7 +294,7 @@ function rebuildPath(state: GameState, tr: Train): boolean {
   const from = stationOf(state, tr.route[tr.routeIdx]!);
   const to = stationOf(state, tr.route[(tr.routeIdx + 1) % tr.route.length]!);
   if (!from || !to) return false;
-  const path = pathOnTrack(state, from.x, from.y, to.x, to.y, tr.companyId);
+  const path = pathOnTrack(state, from.x, from.y, to.x, to.y, tr.companyId, avoidBlocked(state, tr.id));
   if (!path || path.length < 2) {
     tr.status = "waiting";
     tr.path = [];
@@ -395,13 +409,9 @@ function moveTrains(state: GameState, days: number, hooks: SimHooks) {
     const co = state.companies.find((c) => c.id === tr.companyId);
     if (!co || co.bankrupt) continue;
     if (tr.status === "broken") {
-      tr.brokenFor -= days;
-      if (tr.brokenFor <= 0) {
-        tr.status = "running";
-        rebuildPath(state, tr);
-      }
       continue;
     }
+    if (maybeBreakdown(state, tr, days, hooks)) continue;
     if (tr.path.length < 2) {
       rebuildPath(state, tr);
       if (tr.path.length < 2) continue;
@@ -409,16 +419,6 @@ function moveTrains(state: GameState, days: number, hooks: SimHooks) {
     const loco = locoById(tr.locoId);
     const tpy = tilesPerYear(loco);
     let tiles = (tpy * days) / 365;
-    const rng = makeRng(state.seed + tr.id + ((state.year * 12 + state.month) | 0), 3);
-    if (rng.next() < (1 - loco.reliability) * days * 0.002) {
-      tr.status = "broken";
-      tr.brokenFor = 8 + rng.int(0, 20);
-      if (tr.companyId === state.playerId) {
-        hooks.news(`${tr.name} disabled`, `A mechanical failure has stopped ${tr.name} on the line. Repairs are underway.`);
-        hooks.sfx("break");
-      }
-      continue;
-    }
     while (tiles > 0 && tr.path.length >= 2) {
       const a = tr.path[tr.pathIdx]!;
       const b = tr.path[tr.pathIdx + 1];
@@ -431,6 +431,12 @@ function moveTrains(state: GameState, days: number, hooks: SimHooks) {
         }
         break;
       }
+      if (tileBlocked(state, b.x, b.y, tr.id)) {
+        tr.status = "waiting";
+        tiles = 0;
+        break;
+      }
+      if (tr.status === "waiting") tr.status = "running";
       const stepNeed = 1 - tr.segT;
       const gf = gradeFactor(state, b.x, b.y);
       const can = tiles * gf;
@@ -444,6 +450,7 @@ function moveTrains(state: GameState, days: number, hooks: SimHooks) {
         const st = state.stations.find((s) => s.x === b.x && s.y === b.y && tr.route.includes(s.id));
         if (st && tr.pathIdx >= tr.path.length - 1) {
           handleArrival(state, tr, st, hooks);
+          shopAtYard(state, tr, hooks);
           tiles = 0;
         }
       } else {
@@ -622,6 +629,7 @@ function monthEnd(state: GameState, hooks: SimHooks) {
     }
   }
   if (Math.random() < 0.08) randomEvent(state, hooks);
+  maybeLandslide(state, hooks);
   checkGoals(state, hooks);
 }
 
@@ -633,6 +641,7 @@ function yearEnd(state: GameState, hooks: SimHooks) {
       c.cash -= m;
       c.expenseYtd += m;
       tr.age += 1;
+      tr.wear = Math.min(100, tr.wear + 7 + Math.floor(tr.age / 2));
     }
     const div = Math.max(0, (c.revenueYtd - c.expenseYtd) * 0.08);
     if (div > 0 && c.playerShares > 0) {
@@ -743,7 +752,9 @@ export function goalProgress(state: GameState): { label: string; current: number
 export function simulate(state: GameState, days: number, hooks: SimHooks = noop) {
   if (state.won || state.lost) return;
   if (days <= 0) return;
+  migrateYard(state);
   moveTrains(state, days, hooks);
+  tickYard(state, days, hooks);
   moveCrafts(state, days);
   state.day += days;
   while (state.day >= daysInMonth(state.month)) {

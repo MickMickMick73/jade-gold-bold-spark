@@ -14,6 +14,7 @@ import {
   Map as MapIcon,
   X,
   Plane,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCash, formatCashFull, MONTHS } from "@/lib/utils";
@@ -30,6 +31,7 @@ import { locosForYear, locoById } from "@/game/locomotives";
 import { netWorth, playerCompany } from "@/game/economy";
 import { CinematicOverlay } from "@/components/game/Cinematic";
 import { LocoSheet, LocoThumb } from "@/components/game/LocoSheet";
+import { CrisisPanel } from "@/components/game/Crisis";
 import { introCinematic, scenarioPoster, shouldPlayTitle, titleCinematic } from "@/game/cinematics";
 
 function Panel({
@@ -354,10 +356,10 @@ export function HowTo() {
         <p>
           <span className="text-fg">WASD / arrows</span> pan · <span className="text-fg">wheel</span> zoom ·{" "}
           <span className="text-fg">1–6</span> tools · <span className="text-fg">Space</span> pause ·{" "}
-          <span className="text-fg">L</span> ledger · <span className="text-fg">R</span> roster
+          <span className="text-fg">Y</span> yard · <span className="text-fg">L</span> ledger · <span className="text-fg">R</span> roster
         </p>
         <p>
-          Each new locomotive arrives with a film of it on the road, then a spec sheet. Click a train on the map or in the roster to see the same.
+          Your first station is the yard. Trains wear out. Hotboxes, derailments, landslides and signal failures happen on the line — they block traffic and bleed cash until you dispatch the wrecker, reroute, or wait.
         </p>
         <p>
           Highways (1915+) and airfields (1928+) steal passengers. Rail a port city and you skim the sea trade. Build your own strip with the Air tool once the twenties arrive.
@@ -472,6 +474,9 @@ export function HUD() {
               {s === 0 ? "Pause" : `${s}x`}
             </Button>
           ))}
+          <Button size="icon-sm" variant="secondary" aria-label="Yard" onClick={() => setOverlay("crisis")}>
+            <Wrench />
+          </Button>
           <Button size="icon-sm" variant="secondary" aria-label="Ledger" onClick={() => setOverlay("ledger")}>
             <Wallet />
           </Button>
@@ -486,6 +491,23 @@ export function HUD() {
 
       <div className="pointer-events-none absolute bottom-0 inset-x-0 z-10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
+          {hud.crisis.length ? (
+            <button
+              type="button"
+              className="pointer-events-auto rounded-md border border-loss/40 bg-surface/95 px-3 py-2 text-left text-xs"
+              onClick={() => setOverlay("crisis")}
+            >
+              {hud.crisis.map((c) => (
+                <div key={c.id} className="flex justify-between gap-3">
+                  <span className="text-loss">{c.label}</span>
+                  <span className="tabular text-muted">
+                    −{formatCash(c.bleed)}/day · {c.status}
+                  </span>
+                </div>
+              ))}
+              <div className="mt-1 text-[10px] uppercase tracking-wider text-muted">{hud.yardCrews} · Y for yard</div>
+            </button>
+          ) : null}
           {hud.goals.length ? (
             <div className="pointer-events-none rounded-md border border-border bg-surface/90 px-3 py-2 text-xs text-muted">
               {hud.goals.map((g) => (
@@ -878,6 +900,7 @@ export function OverlayRouter() {
       {which === "end" ? <EndScreen /> : null}
       {which === "cinematic" ? <CinematicOverlay /> : null}
       {which === "locodetail" ? <LocoSheet /> : null}
+      {which === "crisis" ? <CrisisPanel /> : null}
     </>
   );
 }

@@ -178,10 +178,12 @@ export function pathOnTrack(
   tx: number,
   ty: number,
   companyId: number,
+  avoid?: (x: number, y: number) => boolean,
 ): { x: number; y: number }[] | null {
-  return astar(state, sx, sy, tx, ty, (tile) => {
+  return astar(state, sx, sy, tx, ty, (tile, x, y) => {
     if (tile.track === 0) return null;
     if (tile.owner !== companyId && tile.owner !== 0) return null;
+    if (avoid && avoid(x, y) && !(x === tx && y === ty) && !(x === sx && y === sy)) return null;
     return 1;
   });
 }

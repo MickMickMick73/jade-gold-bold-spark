@@ -133,6 +133,7 @@ export interface Train {
   companyId: number;
   status: "running" | "waiting" | "broken";
   brokenFor: number;
+  wear: number;
   profit: number;
   lastPayout: number;
   age: number;
@@ -191,6 +192,44 @@ export interface ScenarioDef {
   mapHint?: "standard" | "wide" | "islands" | "dense";
 }
 
+export type IncidentKind = "hotbox" | "derail" | "landslide" | "signal";
+
+export interface Incident {
+  id: number;
+  kind: IncidentKind;
+  companyId: number;
+  x: number;
+  y: number;
+  trainId: number;
+  bleedPerDay: number;
+  waitLeft: number;
+  workLeft: number;
+  wreckerId: number;
+  status: "open" | "enroute" | "working";
+}
+
+export interface Yard {
+  companyId: number;
+  stationId: number;
+  x: number;
+  y: number;
+  crews: number;
+  crewsBusy: number;
+}
+
+export interface Wrecker {
+  id: number;
+  companyId: number;
+  x: number;
+  y: number;
+  heading: number;
+  path: { x: number; y: number }[];
+  pathIdx: number;
+  segT: number;
+  incidentId: number;
+  status: "to_scene" | "working" | "returning";
+}
+
 export interface FloatingText {
   x: number;
   y: number;
@@ -213,6 +252,9 @@ export interface GameState {
   stations: Station[];
   trains: Train[];
   crafts: Craft[];
+  incidents: Incident[];
+  yards: Yard[];
+  wreckers: Wrecker[];
   namePool: string[];
   companies: Company[];
   playerId: number;
@@ -247,7 +289,7 @@ export interface NewGameOpts {
   scenario?: ScenarioDef;
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export const CARGO_LABEL: Record<Cargo, string> = {
   pax: "Passengers",

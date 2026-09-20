@@ -73,6 +73,7 @@ export function LocoSheet() {
             <Stat k="Capacity" v={`${loco.capacity} cars`} />
             <Stat k="Price" v={formatCash(loco.cost)} />
             <Stat k="Yearly upkeep" v={formatCash(loco.maint)} />
+            {train ? <Stat k="Wear" v={`${Math.round(train.wear)} / 100`} /> : null}
           </div>
           {train ? (
             <div className="mb-4 rounded-md border border-border bg-elevated px-3 py-3">

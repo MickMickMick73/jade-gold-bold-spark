@@ -777,6 +777,54 @@ export function renderWorld(
       ctx.arc(p.x, p.y, 16 * z, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (tr.status === "broken") {
+      ctx.strokeStyle = "#c45c4a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14 * z, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  }
+
+  for (const inc of state.incidents ?? []) {
+    const p = worldToScreen(cam, inc.x, inc.y, 0, cw, ch);
+    const pulse = 0.55 + 0.45 * Math.sin(extras.time * 5);
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.25 * pulse;
+    ctx.fillStyle = inc.kind === "landslide" ? "#6a5a42" : "#c45c4a";
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 16 * z);
+    ctx.lineTo(p.x + 22 * z, p.y);
+    ctx.lineTo(p.x, p.y + 10 * z);
+    ctx.lineTo(p.x - 22 * z, p.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#1a1c18";
+    ctx.font = `${Math.max(9, 10 * z)}px sans-serif`;
+    ctx.textAlign = "center";
+    const tag = inc.kind === "hotbox" ? "HOT" : inc.kind === "derail" ? "OFF" : inc.kind === "landslide" ? "CUT" : "SIG";
+    ctx.fillText(tag, p.x, p.y + 3);
+    ctx.restore();
+  }
+
+  for (const wr of state.wreckers ?? []) {
+    const p = worldToScreen(cam, wr.x, wr.y, 0, cw, ch);
+    const dir = headingDir(wr.heading);
+    if (spr?.diesel) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (dir === 2 || dir === 3) ctx.scale(-1, 1);
+      drawAnchored(ctx, spr.diesel, 0, 5 * z, 26 * z, 18 * z);
+      ctx.restore();
+    }
+    ctx.fillStyle = "#c4a574";
+    ctx.fillRect(p.x - 6 * z, p.y + 8 * z, 12 * z, 3 * z);
+    ctx.fillStyle = "#1a1c18";
+    ctx.font = `${Math.max(8, 9 * z)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("WKR", p.x, p.y - 12 * z);
   }
 
   // Ships & planes

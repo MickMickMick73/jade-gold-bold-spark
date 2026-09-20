@@ -6,6 +6,7 @@ import type { Cinematic } from "./cinematics";
 import { goalProgress } from "./simulation";
 import { netWorth, playerCompany } from "./economy";
 import { MONTHS, formatCash } from "@/lib/utils";
+import { INCIDENT_META, playerYard } from "./yard";
 
 export type Screen =
   | "menu"
@@ -22,7 +23,8 @@ export type Screen =
   | "trainbuy"
   | "end"
   | "cinematic"
-  | "locodetail";
+  | "locodetail"
+  | "crisis";
 
 export interface HudSnap {
   cash: string;
@@ -41,6 +43,8 @@ export interface HudSnap {
   scenario: string;
   goals: { label: string; current: number; target: number; done: boolean }[];
   news: { headline: string; body: string; year: number; month: number } | null;
+  crisis: { id: number; kind: string; label: string; bleed: number; status: string }[];
+  yardCrews: string;
 }
 
 export interface LocoFocus {
@@ -99,6 +103,8 @@ export const emptyHud: HudSnap = {
   scenario: "",
   goals: [],
   news: null,
+  crisis: [],
+  yardCrews: "",
 };
 
 export function snapHud(state: GameState): HudSnap {
@@ -121,6 +127,20 @@ export function snapHud(state: GameState): HudSnap {
     scenario: state.scenarioTitle,
     goals: goalProgress(state),
     news: last,
+    crisis: (state.incidents ?? [])
+      .filter((i) => i.companyId === state.playerId)
+      .map((i) => ({
+        id: i.id,
+        kind: i.kind,
+        label: INCIDENT_META[i.kind].label,
+        bleed: i.bleedPerDay,
+        status: i.status,
+      })),
+    yardCrews: (() => {
+      const y = playerYard(state);
+      if (!y) return "No yard";
+      return `${y.crews - y.crewsBusy}/${y.crews} crews`;
+    })(),
   };
 }
 

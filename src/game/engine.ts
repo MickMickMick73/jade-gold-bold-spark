@@ -1,4 +1,4 @@
-import type { GameState, Speed, Tool } from "./types";
+import type { GameState, IncidentKind, Speed, Tool } from "./types";
 import { CARGO_LABEL } from "./types";
 import { generateWorld } from "./mapgen";
 import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, recomputeAllTracks, simulate, type SimHooks } from "./simulation";
@@ -11,6 +11,7 @@ import { locoById } from "./locomotives";
 import { formatCashFull } from "@/lib/utils";
 import { endingCinematic, locoIntroCinematic } from "./cinematics";
 import { loadSprites } from "./sprites";
+import { openIncident } from "./yard";
 
 const PAN = 420;
 
@@ -174,6 +175,15 @@ export class Engine {
         if (this.mode !== "play") return;
         this.queueLocoIntro(id);
       },
+      incidentOpened: (id) => {
+        if (this.mode !== "play") return;
+        const inc = this.state?.incidents.find((i) => i.id === id);
+        if (!inc) return;
+        this.centerOn(inc.x, inc.y);
+        const st = useGameStore.getState();
+        if (st.overlay === "cinematic" || st.overlay === "locodetail") return;
+        st.setOverlay("crisis");
+      },
     };
   }
 
@@ -245,6 +255,11 @@ export class Engine {
   playingUi() {
     const s = useGameStore.getState();
     return s.screen === "playing" && !s.overlay;
+  }
+
+  simulating() {
+    const s = useGameStore.getState();
+    return s.screen === "playing" && (s.overlay === null || s.overlay === "crisis");
   }
 
   onDown = (e: PointerEvent) => {
@@ -351,6 +366,7 @@ export class Engine {
     if (e.code === "Digit4") st.setTool("train");
     if (e.code === "Digit5") st.setTool("bulldoze");
     if (e.code === "Digit6") st.setTool("airport");
+    if (e.code === "KeyY") st.setOverlay("crisis");
     if (e.code === "KeyL") st.setOverlay("ledger");
     if (e.code === "KeyR") st.setOverlay("roster");
     if (e.code === "KeyN") st.setOverlay("news");
@@ -418,6 +434,12 @@ export class Engine {
 
   inspect(x: number, y: number) {
     if (!this.state) return;
+    const inc = this.state.incidents.find((i) => i.x === x && i.y === y && i.companyId === this.state!.playerId);
+    if (inc) {
+      useGameStore.getState().setOverlay("crisis");
+      this.centerOn(inc.x, inc.y);
+      return;
+    }
     const tr = this.state.trains.find((t) => Math.round(t.x) === x && Math.round(t.y) === y);
     if (tr) {
       useGameStore.getState().setSelected("train", tr.id);
@@ -487,7 +509,7 @@ export class Engine {
     for (const f of this.floats) f.life -= dt * 0.7;
     this.floats = this.floats.filter((f) => f.life > 0);
 
-    if (this.mode === "play" && this.state && this.playingUi()) {
+    if (this.mode === "play" && this.state && this.simulating()) {
       this.state.playTime += dt;
       const dps = daysPerSecond(this.state.speed);
       this.acc += dt;
@@ -569,6 +591,15 @@ export class Engine {
       },
       queueLocoIntro: (id: string) => this.queueLocoIntro(id),
       closeLocoSheet: () => this.closeLocoSheet(),
+      forceIncident: (kind?: string) => {
+        if (!this.state) return null;
+        const k = (kind as IncidentKind) || "hotbox";
+        const tr = this.state.trains.find((t) => t.companyId === this.state!.playerId && t.status !== "broken");
+        if (tr) return openIncident(this.state, k === "landslide" ? "hotbox" : k, Math.round(tr.x), Math.round(tr.y), tr.companyId, tr, this.hooks()).id;
+        const yard = this.state.yards.find((y) => y.companyId === this.state!.playerId);
+        if (!yard) return null;
+        return openIncident(this.state, k, yard.x, yard.y, this.state.playerId, null, this.hooks()).id;
+      },
     };
   }
 }
@@ -589,6 +620,7 @@ declare global {
       setZoom: (z: number) => void;
       queueLocoIntro: (id: string) => void;
       closeLocoSheet: () => void;
+      forceIncident: (kind?: string) => number | null;
     };
   }
 }

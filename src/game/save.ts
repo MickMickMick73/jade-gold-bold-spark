@@ -1,5 +1,6 @@
 import { SAVE_VERSION, type City, type GameState, type Tile } from "./types";
 import { cityClassFromPop } from "./growth";
+import { migrateYard } from "./yard";
 
 const PREFIX = "iron-baron-v1";
 const SETTINGS_KEY = `${PREFIX}-settings`;
@@ -120,6 +121,7 @@ function migrateState(data: GameState) {
     if (city.growth === undefined) city.growth = 0.01;
     if (city.delivered === undefined) city.delivered = 0;
   }
+  migrateYard(data);
 }
 
 export function loadSlot(slot: number): GameState | null {
