@@ -1,5 +1,6 @@
 import type { GameState, Incident, IncidentKind, Train, Wrecker, Yard } from "./types";
 import { pathOnTrack, tileAt } from "./pathfinding";
+import { advanceRail, railLen } from "./track";
 import { costMul } from "./economy";
 import { locoById } from "./locomotives";
 import { makeRng } from "./rng";
@@ -289,31 +290,22 @@ export function tickYard(state: GameState, days: number, hooks: YardHooks) {
       continue;
     }
     let tiles = (wreckerSpeed * days) / 365;
-    while (tiles > 0 && wr.path.length >= 2) {
-      const a = wr.path[wr.pathIdx]!;
-      const b = wr.path[wr.pathIdx + 1];
-      if (!b) {
+    while (tiles > 0 && wr.path.length >= 2 && wr.pathIdx < wr.path.length) {
+      const tile = wr.path[wr.pathIdx]!;
+      const from = wr.path[wr.pathIdx - 1] ?? null;
+      const to = wr.path[wr.pathIdx + 1] ?? null;
+      if (!to && wr.pathIdx >= wr.path.length - 1) {
         arriveWrecker(state, wr, hooks);
         break;
       }
-      const need = 1 - wr.segT;
-      if (tiles >= need) {
-        tiles -= need;
-        wr.segT = 0;
-        wr.pathIdx += 1;
-        wr.x = b.x;
-        wr.y = b.y;
-        wr.heading = Math.atan2(b.y - a.y, b.x - a.x);
-        if (wr.pathIdx >= wr.path.length - 1) {
-          arriveWrecker(state, wr, hooks);
-          tiles = 0;
-        }
-      } else {
-        wr.segT += tiles;
-        wr.x = a.x + (b.x - a.x) * wr.segT;
-        wr.y = a.y + (b.y - a.y) * wr.segT;
-        wr.heading = Math.atan2(b.y - a.y, b.x - a.x);
+      const remain = (1 - wr.segT) * railLen(tile, from, to);
+      const step = Math.min(tiles, remain + 1e-6);
+      const ended = advanceRail(wr, step);
+      tiles -= step;
+      if (ended || wr.pathIdx >= wr.path.length - 1) {
+        arriveWrecker(state, wr, hooks);
         tiles = 0;
+        break;
       }
     }
   }

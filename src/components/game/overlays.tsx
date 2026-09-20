@@ -358,7 +358,7 @@ export function HowTo() {
       <div className="space-y-4 text-sm leading-relaxed text-muted">
         <p className="text-fg">You are a railroad charter. Turn dirt into dividends.</p>
         <ol className="list-decimal space-y-2 pl-4">
-          <li>Drag to lay track between towns. Hills, rivers and mountains cost more. Ocean needs a trestle — grow it from shore, eight tiles at most, $24,000 a span.</li>
+          <li>Drag to lay track between towns. Lines take the diagonal. Corners are curves, and the consist follows the iron. Hills, rivers and ocean trestles cost more.</li>
           <li>Build a station on your track next to a city so cargo will wait on the platform.</li>
           <li>Buy a locomotive, hang cars, and click two or more stations for a route.</li>
           <li>Unpause time. Cities grow if you serve them, starve if you don't. New towns appear. Ports, highways and airfields arrive with the decades.</li>

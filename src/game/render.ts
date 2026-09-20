@@ -1,7 +1,8 @@
 import { locoById } from "./locomotives";
 import type { GameState, Tile, Tool } from "./types";
-import { CARGO_COLOR, DIRS, E, N, S, W } from "./types";
+import { CARGO_COLOR, DIRS, E, N, NE, NW, S, SE, SW, W } from "./types";
 import { tileAt } from "./pathfinding";
+import { bitsFromPath, poseBehind, trackPairs } from "./track";
 import { carDir, cargoSprite, getSprites, hash2, headingDir } from "./sprites";
 
 export const TW = 48;
@@ -174,20 +175,57 @@ function drawBuilding(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   ctx.fill();
 }
 
-/** Screen offset from a tile center to the shared edge with a 4-neighbor. */
+/** Screen offset from a tile center to the shared edge/vertex with an 8-neighbor. */
 function isoArm(bit: number): [number, number] {
   switch (bit) {
     case N:
       return [TW / 4, -TH / 4];
+    case NE:
+      return [TW / 2, 0];
     case E:
       return [TW / 4, TH / 4];
+    case SE:
+      return [0, TH / 2];
     case S:
       return [-TW / 4, TH / 4];
+    case SW:
+      return [-TW / 2, 0];
     case W:
       return [-TW / 4, -TH / 4];
+    case NW:
+      return [0, -TH / 2];
     default:
       return [0, 0];
   }
+}
+
+type RailCurve = { p0: { x: number; y: number }; p1: { x: number; y: number }; p2: { x: number; y: number } };
+
+function railCurves(x: number, y: number, bits: number, ext = 1.05): RailCurve[] {
+  return trackPairs(bits).map(([a, b]) => {
+    const A = isoArm(a);
+    const B = isoArm(b);
+    return {
+      p0: { x: x + A[0] * ext, y: y + A[1] * ext },
+      p1: { x, y },
+      p2: { x: x + B[0] * ext, y: y + B[1] * ext },
+    };
+  });
+}
+
+function sampleCurve(c: RailCurve, t: number) {
+  const u = 1 - t;
+  return {
+    x: u * u * c.p0.x + 2 * u * t * c.p1.x + t * t * c.p2.x,
+    y: u * u * c.p0.y + 2 * u * t * c.p1.y + t * t * c.p2.y,
+  };
+}
+
+function curveTan(c: RailCurve, t: number) {
+  return {
+    x: 2 * (1 - t) * (c.p1.x - c.p0.x) + 2 * t * (c.p2.x - c.p1.x),
+    y: 2 * (1 - t) * (c.p1.y - c.p0.y) + 2 * t * (c.p2.y - c.p1.y),
+  };
 }
 
 function drawFoot(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number) {
@@ -255,108 +293,77 @@ function drawTrack(
   color: string,
   opts?: { bridge?: boolean; tunnel?: boolean },
 ) {
-  const arms: [number, number][] = [];
-  for (const d of DIRS) {
-    if (bits & d.bit) arms.push(isoArm(d.bit));
-  }
-  if (!arms.length) arms.push(isoArm(N), isoArm(S));
-  const ext = 1.08;
-  const spans: [number, number, number, number][] = [];
-  if (bits === (N | S) || bits === (E | W)) {
-    const a = isoArm(bits & (N | E));
-    const b = isoArm(bits & (S | W));
-    spans.push([x + a[0] * ext, y + a[1] * ext, x + b[0] * ext, y + b[1] * ext]);
-  } else {
-    for (const a of arms) spans.push([x, y, x + a[0] * ext, y + a[1] * ext]);
-  }
+  const curves = railCurves(x, y, bits);
+  const pairs = trackPairs(bits);
 
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  if (opts?.bridge) {
-    ctx.strokeStyle = "#3a2c20";
-    ctx.lineWidth = 8.5;
-    for (const s of spans) {
+  const strokeAll = (width: number, style: string, dy = 0) => {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    for (const c of curves) {
       ctx.beginPath();
-      ctx.moveTo(s[0], s[1] + 3);
-      ctx.lineTo(s[2], s[3] + 3);
+      ctx.moveTo(c.p0.x, c.p0.y + dy);
+      ctx.quadraticCurveTo(c.p1.x, c.p1.y + dy, c.p2.x, c.p2.y + dy);
       ctx.stroke();
     }
+  };
+
+  if (opts?.bridge) {
+    strokeAll(8.5, "#3a2c20", 3);
     ctx.strokeStyle = "#2a2218";
     ctx.lineWidth = 1.6;
-    for (const s of spans) {
-      const dx = s[2] - s[0];
-      const dy = s[3] - s[1];
-      const len = Math.hypot(dx, dy) || 1;
-      const n = Math.max(2, Math.round(len / 7));
-      for (let i = 0; i <= n; i++) {
-        const t = i / n;
-        const px = s[0] + dx * t;
-        const py = s[1] + dy * t;
+    for (const c of curves) {
+      for (let i = 0; i <= 5; i++) {
+        const p = sampleCurve(c, i / 5);
         ctx.beginPath();
-        ctx.moveTo(px - 1.2, py + 2);
-        ctx.lineTo(px + 0.6, py + 13);
+        ctx.moveTo(p.x - 1.2, p.y + 2);
+        ctx.lineTo(p.x + 0.6, p.y + 13);
         ctx.stroke();
       }
     }
-    ctx.strokeStyle = "#c4b49a";
-    ctx.lineWidth = 2.2;
-    for (const s of spans) {
-      ctx.beginPath();
-      ctx.moveTo(s[0], s[1] - 3.2);
-      ctx.lineTo(s[2], s[3] - 3.2);
-      ctx.stroke();
-    }
+    strokeAll(2.2, "#c4b49a", -3.2);
   }
 
-  ctx.strokeStyle = opts?.tunnel ? "#2a2824" : "#3a342c";
-  ctx.lineWidth = 5.4;
-  for (const s of spans) {
-    ctx.beginPath();
-    ctx.moveTo(s[0], s[1]);
-    ctx.lineTo(s[2], s[3]);
-    ctx.stroke();
-  }
+  strokeAll(5.4, opts?.tunnel ? "#2a2824" : "#3a342c");
 
   ctx.strokeStyle = "#5c4c3a";
   ctx.lineWidth = 1.35;
-  for (const s of spans) {
-    const dx = s[2] - s[0];
-    const dy = s[3] - s[1];
-    const len = Math.hypot(dx, dy) || 1;
-    const px = (-dy / len) * 3.1;
-    const py = (dx / len) * 3.1;
-    for (const t of [0.22, 0.5, 0.78]) {
-      const sx = s[0] + dx * t;
-      const sy = s[1] + dy * t;
+  for (const c of curves) {
+    for (const t of [0.18, 0.36, 0.54, 0.72, 0.9]) {
+      const p = sampleCurve(c, t);
+      const tan = curveTan(c, t);
+      const len = Math.hypot(tan.x, tan.y) || 1;
+      const px = (-tan.y / len) * 3.1;
+      const py = (tan.x / len) * 3.1;
       ctx.beginPath();
-      ctx.moveTo(sx + px, sy + py);
-      ctx.lineTo(sx - px, sy - py);
+      ctx.moveTo(p.x + px, p.y + py);
+      ctx.lineTo(p.x - px, p.y - py);
       ctx.stroke();
     }
   }
 
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.35;
-  for (const s of spans) {
-    const dx = s[2] - s[0];
-    const dy = s[3] - s[1];
-    const len = Math.hypot(dx, dy) || 1;
-    const px = (-dy / len) * 1.65;
-    const py = (dx / len) * 1.65;
+  for (const c of curves) {
+    const tan = curveTan(c, 0.5);
+    const len = Math.hypot(tan.x, tan.y) || 1;
+    const ox = (-tan.y / len) * 1.65;
+    const oy = (tan.x / len) * 1.65;
     ctx.beginPath();
-    ctx.moveTo(s[0] + px, s[1] + py);
-    ctx.lineTo(s[2] + px, s[3] + py);
-    ctx.moveTo(s[0] - px, s[1] - py);
-    ctx.lineTo(s[2] - px, s[3] - py);
+    ctx.moveTo(c.p0.x + ox, c.p0.y + oy);
+    ctx.quadraticCurveTo(c.p1.x + ox, c.p1.y + oy, c.p2.x + ox, c.p2.y + oy);
+    ctx.moveTo(c.p0.x - ox, c.p0.y - oy);
+    ctx.quadraticCurveTo(c.p1.x - ox, c.p1.y - oy, c.p2.x - ox, c.p2.y - oy);
     ctx.stroke();
   }
 
-  if (arms.length >= 3) {
+  if (pairs.length >= 2) {
     ctx.fillStyle = "#3a342c";
     ctx.beginPath();
-    ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.6, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.15;
@@ -623,13 +630,8 @@ export function renderWorld(
   if (extras.ghost && extras.ghost.length) {
     ctx.save();
     ctx.globalAlpha = 0.72;
-    const occ = new Set(extras.ghost.map((g) => `${g.x},${g.y}`));
-    for (const g of extras.ghost) {
-      let bits = 0;
-      for (const d of DIRS) {
-        if (occ.has(`${g.x + d.dx},${g.y + d.dy}`)) bits |= d.bit;
-      }
-      if (!bits) bits = N | S;
+    extras.ghost.forEach((g, i) => {
+      const bits = bitsFromPath(extras.ghost!, i);
       const gt = tileAt(state, g.x, g.y);
       const overWater = !!gt && (gt.t === "ocean" || gt.t === "river" || gt.t === "coast");
       const p = worldToScreen(cam, g.x, g.y, overWater ? 0.28 : 0, cw, ch);
@@ -639,7 +641,7 @@ export function renderWorld(
       diamond(ctx, 0, 0, "rgba(201,205,198,0.28)");
       drawTrack(ctx, 0, 0, bits, "#d8d4cc", { bridge: overWater });
       ctx.restore();
-    }
+    });
     ctx.restore();
   }
 
@@ -749,21 +751,21 @@ export function renderWorld(
     const p = worldToScreen(cam, tr.x, tr.y, lift, cw, ch);
     const co = state.companies.find((c) => c.id === tr.companyId);
     const loco = locoById(tr.locoId);
-    const dir = headingDir(tr.heading);
     if (spr) {
-      const ang = isoHeading(tr.heading);
-      const fx = Math.cos(ang);
-      const fy = Math.sin(ang);
-      const rolling = carDir(tr.heading);
       for (let i = tr.cars.length; i >= 0; i--) {
-        const bx = p.x - fx * i * 15 * z;
-        const by = p.y - fy * i * 15 * z;
+        const pose =
+          i === 0 || tr.path.length < 2
+            ? { x: tr.x, y: tr.y, heading: tr.heading }
+            : poseBehind(tr.path, tr.pathIdx, tr.segT, i * 0.42);
+        const bp = worldToScreen(cam, pose.x, pose.y, lift, cw, ch);
+        const dir = headingDir(pose.heading);
+        const rolling = carDir(pose.heading);
         const car = tr.cars[i - 1];
         const isPax = !car || car.cargo === "pax" || car.cargo === "mail";
         const sheet = i === 0 ? (loco.kind === "diesel" ? null : spr.loco) : isPax ? spr.coach : spr.freight;
         ctx.save();
         if (i === 0 && loco.kind === "diesel") {
-          ctx.translate(bx, by);
+          ctx.translate(bp.x, bp.y);
           if (dir === 2 || dir === 3) ctx.scale(-1, 1);
           drawAnchored(ctx, spr.diesel, 0, 5 * z, 30 * z, 20 * z);
         } else if (sheet) {
@@ -773,7 +775,7 @@ export function renderWorld(
           const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
           const w = (i === 0 ? 28 : 24) * z;
           const h = w / ar;
-          drawAnchored(ctx, img, bx, by + 5 * z, w, h, isCar && rolling.flipX);
+          drawAnchored(ctx, img, bp.x, bp.y + 5 * z, w, h, isCar && rolling.flipX);
         }
         ctx.restore();
         if (i === 0 && loco.kind === "steam" && tr.status === "running") {
@@ -781,7 +783,7 @@ export function renderWorld(
           ctx.globalAlpha = 0.35 * (1 - puff);
           ctx.fillStyle = "#d8d4cc";
           ctx.beginPath();
-          ctx.arc(bx + 4 * z, by - 14 * z - puff * 10 * z, (3 + puff * 3) * z, 0, Math.PI * 2);
+          ctx.arc(bp.x + 4 * z, bp.y - 14 * z - puff * 10 * z, (3 + puff * 3) * z, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1;
         }

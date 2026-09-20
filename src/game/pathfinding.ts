@@ -1,4 +1,4 @@
-import { DIRS, type GameState, type Tile } from "./types";
+import { DIRS, DIRS8, type Dir8, type GameState, type Tile } from "./types";
 
 export function idx(state: { mapW: number }, x: number, y: number): number {
   return y * state.mapW + x;
@@ -120,7 +120,8 @@ function astar(
   sy: number,
   tx: number,
   ty: number,
-  passable: (tile: Tile, x: number, y: number, from: Tile | null) => number | null,
+  passable: (tile: Tile, x: number, y: number, from: Tile | null, dir: Dir8) => number | null,
+  dirs: readonly Dir8[] = DIRS,
 ): { x: number; y: number }[] | null {
   if (!inBounds(state, sx, sy) || !inBounds(state, tx, ty)) return null;
   const w = state.mapW;
@@ -134,12 +135,14 @@ function astar(
   const came = new Int32Array(size);
   came.fill(-1);
   const heap = new MinHeap();
-  const heur = (i: number) => {
+  const octile = (i: number) => {
     const x = i % w;
     const y = (i / w) | 0;
-    return Math.abs(x - tx) + Math.abs(y - ty);
+    const dx = Math.abs(x - tx);
+    const dy = Math.abs(y - ty);
+    return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
   };
-  heap.push(heur(start), start);
+  heap.push(octile(start), start);
   let found = false;
   while (heap.n > 0) {
     const cur = heap.pop()!;
@@ -150,19 +153,19 @@ function astar(
     const cx = cur % w;
     const cy = (cur / w) | 0;
     const ct = state.tiles[cur]!;
-    for (const d of DIRS) {
+    for (const d of dirs) {
       const nx = cx + d.dx;
       const ny = cy + d.dy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const ni = ny * w + nx;
       const nt = state.tiles[ni]!;
-      const step = passable(nt, nx, ny, ct);
+      const step = passable(nt, nx, ny, ct, d);
       if (step === null) continue;
       const ng = g[cur]! + step;
       if (ng < g[ni]!) {
         g[ni] = ng;
         came[ni] = cur;
-        heap.push(ng + heur(ni), ni);
+        heap.push(ng + octile(ni), ni);
       }
     }
   }
@@ -187,12 +190,26 @@ export function pathOnTrack(
   companyId: number,
   avoid?: (x: number, y: number) => boolean,
 ): { x: number; y: number }[] | null {
-  return astar(state, sx, sy, tx, ty, (tile, x, y) => {
-    if (tile.track === 0) return null;
-    if (tile.owner !== companyId && tile.owner !== 0) return null;
-    if (avoid && avoid(x, y) && !(x === tx && y === ty) && !(x === sx && y === sy)) return null;
-    return 1;
-  });
+  return astar(
+    state,
+    sx,
+    sy,
+    tx,
+    ty,
+    (tile, x, y, from, dir) => {
+      if (tile.track === 0) return null;
+      if (tile.owner !== companyId && tile.owner !== 0) return null;
+      if (avoid && avoid(x, y) && !(x === tx && y === ty) && !(x === sx && y === sy)) return null;
+      if (from && dir) {
+        const diag = dir.dx !== 0 && dir.dy !== 0;
+        if (diag) {
+          if (!(from.track & dir.bit) || !(tile.track & dir.opp)) return null;
+        }
+      }
+      return dir.dx !== 0 && dir.dy !== 0 ? Math.SQRT2 : 1;
+    },
+    DIRS8,
+  );
 }
 
 export function pathOnWater(
@@ -256,6 +273,33 @@ export function line4(x0: number, y0: number, x1: number, y1: number): { x: numb
       iy++;
     }
     out.push({ x, y });
+    if (out.length > 800) break;
+  }
+  return out;
+}
+
+/** 8-connected Bresenham — diagonals allowed so lines sweep as 45° iron, not stair-steps. */
+export function line8(x0: number, y0: number, x1: number, y1: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 === x1 ? 0 : x0 < x1 ? 1 : -1;
+  const sy = y0 === y1 ? 0 : y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  for (;;) {
+    out.push({ x, y });
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
     if (out.length > 800) break;
   }
   return out;

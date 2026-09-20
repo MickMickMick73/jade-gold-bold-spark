@@ -2,7 +2,7 @@ import type { GameState, IncidentKind, Speed, Tool } from "./types";
 import { CARGO_LABEL } from "./types";
 import { generateWorld } from "./mapgen";
 import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, recomputeAllTracks, simulate, type SimHooks } from "./simulation";
-import { pathForSurvey, tileAt, line4 } from "./pathfinding";
+import { pathForSurvey, tileAt, line8 } from "./pathfinding";
 import { renderMinimap, renderWorld, screenToWorld, iso, type Cam } from "./render";
 import { sfx as playSfx, unlockAudio } from "./audio";
 import { snapHud, useGameStore } from "./store";
@@ -315,7 +315,7 @@ export class Engine {
     const t = this.tileFromEvent(e);
     this.hover = { x: t.x, y: t.y };
     if (this.paintFrom && this.playingUi()) {
-      this.ghost = line4(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
+      this.ghost = line8(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
     }
   };
 
@@ -460,7 +460,7 @@ export class Engine {
         placeTrackLine(this.state, cmd.x0, cmd.y0, cmd.x1, cmd.y1, companyId, hooks);
         break;
       case "bulldoze":
-        for (const p of line4(cmd.x0, cmd.y0, cmd.x1, cmd.y1)) bulldoze(this.state, p.x, p.y, companyId, hooks);
+        for (const p of line8(cmd.x0, cmd.y0, cmd.x1, cmd.y1)) bulldoze(this.state, p.x, p.y, companyId, hooks);
         break;
       case "station": {
         const st = placeStation(this.state, cmd.x, cmd.y, companyId, hooks);
@@ -727,6 +727,10 @@ export class Engine {
       },
       queueLocoIntro: (id: string) => this.queueLocoIntro(id),
       closeLocoSheet: () => this.closeLocoSheet(),
+      paint: (x0: number, y0: number, x1: number, y1: number) => this.applyPaint(x0, y0, x1, y1),
+      station: (x: number, y: number) => this.tryStation(x, y),
+      buy: (loco: string, cars: string[], route: number[]) =>
+        this.netAct({ op: "train", locoId: loco, cars: cars as import("./types").Cargo[], route }),
       forceIncident: (kind?: string) => {
         if (!this.state) return null;
         const k = (kind as IncidentKind) || "hotbox";

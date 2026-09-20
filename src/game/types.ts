@@ -38,12 +38,27 @@ export const N = 1;
 export const E = 2;
 export const S = 4;
 export const W = 8;
+export const NE = 16;
+export const SE = 32;
+export const SW = 64;
+export const NW = 128;
 export const DIRS = [
   { bit: N, dx: 0, dy: -1, opp: S },
   { bit: E, dx: 1, dy: 0, opp: W },
   { bit: S, dx: 0, dy: 1, opp: N },
   { bit: W, dx: -1, dy: 0, opp: E },
 ] as const;
+export const DIRS8 = [
+  { bit: N, dx: 0, dy: -1, opp: S },
+  { bit: NE, dx: 1, dy: -1, opp: SW },
+  { bit: E, dx: 1, dy: 0, opp: W },
+  { bit: SE, dx: 1, dy: 1, opp: NW },
+  { bit: S, dx: 0, dy: 1, opp: N },
+  { bit: SW, dx: -1, dy: 1, opp: NE },
+  { bit: W, dx: -1, dy: 0, opp: E },
+  { bit: NW, dx: -1, dy: -1, opp: SE },
+] as const;
+export type Dir8 = (typeof DIRS8)[number];
 
 export interface Tile {
   t: Terrain;

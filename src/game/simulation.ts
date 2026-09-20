@@ -4,7 +4,7 @@ import { locosForYear, locoById, tilesPerYear, type LocoDef } from "./locomotive
 import { moveCrafts, tickWorld, findAirfield } from "./growth";
 import {
   CARGOS,
-  DIRS,
+  DIRS8,
   N,
   S,
   type Cargo,
@@ -15,7 +15,8 @@ import {
   type Tile,
   type Train,
 } from "./types";
-import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line4, canBridgeOcean } from "./pathfinding";
+import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line8, canBridgeOcean } from "./pathfinding";
+import { advanceRail, connectPath, railLen } from "./track";
 import {
   avoidBlocked,
   ensureYard,
@@ -89,18 +90,23 @@ function recomputeTrackBits(state: GameState, x: number, y: number) {
   const t = tileAt(state, x, y);
   if (!t || t.track === 0) return;
   let bits = 0;
-  for (const d of DIRS) {
+  for (const d of DIRS8) {
     const n = tileAt(state, x + d.dx, y + d.dy);
     if (!n || n.track === 0) continue;
     if (n.owner && t.owner && n.owner !== t.owner) continue;
-    bits |= d.bit;
+    const diag = d.dx !== 0 && d.dy !== 0;
+    if (diag) {
+      if (t.track & d.bit && n.track & d.opp) bits |= d.bit;
+    } else {
+      bits |= d.bit;
+    }
   }
   t.track = bits === 0 ? N | S : bits;
 }
 
 export function refreshConnections(state: GameState, x: number, y: number) {
   recomputeTrackBits(state, x, y);
-  for (const d of DIRS) recomputeTrackBits(state, x + d.dx, y + d.dy);
+  for (const d of DIRS8) recomputeTrackBits(state, x + d.dx, y + d.dy);
 }
 
 export function recomputeAllTracks(state: GameState) {
@@ -149,10 +155,13 @@ export function placeTrackLine(
   companyId: number,
   hooks: SimHooks = noop,
 ): number {
+  const pts = line8(x0, y0, x1, y1);
   let n = 0;
-  for (const p of line4(x0, y0, x1, y1)) {
+  for (const p of pts) {
     if (placeTrack(state, p.x, p.y, companyId, hooks)) n++;
   }
+  connectPath(state, pts);
+  for (const p of pts) refreshConnections(state, p.x, p.y);
   return n;
 }
 
@@ -170,7 +179,7 @@ export function bulldoze(state: GameState, x: number, y: number, companyId: numb
     t.owner = 0;
     t.bridge = false;
     t.tunnel = false;
-    for (const d of DIRS) {
+    for (const d of DIRS8) {
       recomputeTrackBits(state, x + d.dx, y + d.dy);
     }
     const c = state.companies.find((x) => x.id === companyId);
@@ -420,46 +429,41 @@ function moveTrains(state: GameState, days: number, hooks: SimHooks) {
     const loco = locoById(tr.locoId);
     const tpy = tilesPerYear(loco);
     let tiles = (tpy * days) / 365;
-    while (tiles > 0 && tr.path.length >= 2) {
-      const a = tr.path[tr.pathIdx]!;
-      const b = tr.path[tr.pathIdx + 1];
-      if (!b) {
-        const st = state.stations.find((s) => s.x === a.x && s.y === a.y && tr.route.includes(s.id));
-        if (st) handleArrival(state, tr, st, hooks);
-        else {
+    while (tiles > 0 && tr.path.length >= 2 && tr.pathIdx < tr.path.length) {
+      const tile = tr.path[tr.pathIdx]!;
+      const from = tr.path[tr.pathIdx - 1] ?? null;
+      const to = tr.path[tr.pathIdx + 1] ?? null;
+      if (!to && tr.pathIdx >= tr.path.length - 1) {
+        const st = state.stations.find((s) => s.x === tile.x && s.y === tile.y && tr.route.includes(s.id));
+        if (st) {
+          handleArrival(state, tr, st, hooks);
+          shopAtYard(state, tr, hooks);
+        } else {
           tr.routeIdx = (tr.routeIdx + 1) % tr.route.length;
           rebuildPath(state, tr);
         }
         break;
       }
-      if (tileBlocked(state, b.x, b.y, tr.id)) {
+      if (to && tileBlocked(state, to.x, to.y, tr.id)) {
         tr.status = "waiting";
         tiles = 0;
         break;
       }
       if (tr.status === "waiting") tr.status = "running";
-      const stepNeed = 1 - tr.segT;
-      const gf = gradeFactor(state, b.x, b.y);
-      const can = tiles * gf;
-      if (can >= stepNeed) {
-        tiles -= stepNeed / gf;
-        tr.segT = 0;
-        tr.pathIdx += 1;
-        tr.x = b.x;
-        tr.y = b.y;
-        tr.heading = Math.atan2(b.y - a.y, b.x - a.x);
-        const st = state.stations.find((s) => s.x === b.x && s.y === b.y && tr.route.includes(s.id));
-        if (st && tr.pathIdx >= tr.path.length - 1) {
+      const gf = gradeFactor(state, (to ?? tile).x, (to ?? tile).y);
+      const remain = (1 - tr.segT) * railLen(tile, from, to);
+      const step = Math.min(tiles * gf, remain + 1e-6);
+      const ended = advanceRail(tr, step);
+      tiles -= step / gf;
+      if (ended || tr.pathIdx >= tr.path.length - 1 && tr.segT >= 0.999) {
+        const here = tr.path[Math.min(tr.pathIdx, tr.path.length - 1)]!;
+        const st = state.stations.find((s) => s.x === here.x && s.y === here.y && tr.route.includes(s.id));
+        if (st) {
           handleArrival(state, tr, st, hooks);
           shopAtYard(state, tr, hooks);
-          tiles = 0;
         }
-      } else {
-        tr.segT += can;
         tiles = 0;
-        tr.x = a.x + (b.x - a.x) * tr.segT;
-        tr.y = a.y + (b.y - a.y) * tr.segT;
-        tr.heading = Math.atan2(b.y - a.y, b.x - a.x);
+        break;
       }
     }
   }
@@ -513,10 +517,9 @@ function aiThink(state: GameState, hooks: SimHooks) {
       const path = pathForSurvey(state, a.x, a.y, b.x, b.y);
       if (path) {
         const budgetTiles = Math.min(path.length, 8);
-        for (let i = 0; i < budgetTiles; i++) {
-          const p = path[i]!;
-          placeTrack(state, p.x, p.y, co.id, hooks);
-        }
+        const slice = path.slice(0, budgetTiles);
+        for (const p of slice) placeTrack(state, p.x, p.y, co.id, hooks);
+        connectPath(state, slice);
         const start = path[0]!;
         const end = path[Math.min(path.length - 1, budgetTiles - 1)]!;
         if (!state.stations.some((s) => s.x === start.x && s.y === start.y)) {
@@ -543,10 +546,9 @@ function aiThink(state: GameState, hooks: SimHooks) {
         const path = pathForSurvey(state, from.x, from.y, best.x, best.y);
         if (path) {
           const n = Math.min(6, path.length);
-          for (let i = 0; i < n; i++) {
-            const p = path[i]!;
-            placeTrack(state, p.x, p.y, co.id, hooks);
-          }
+          const slice = path.slice(0, n);
+          for (const p of slice) placeTrack(state, p.x, p.y, co.id, hooks);
+          connectPath(state, slice);
           const last = path[n - 1]!;
           if (n === path.length) placeStation(state, last.x, last.y, co.id, hooks);
         }
