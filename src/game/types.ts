@@ -12,6 +12,19 @@ export const CARGOS = [
 ] as const;
 export type Cargo = (typeof CARGOS)[number];
 
+export function isCoachCargo(c: Cargo): boolean {
+  return c === "pax" || c === "mail";
+}
+
+export const COACH_CARGOS: Cargo[] = ["pax", "mail"];
+export const FREIGHT_CARGOS: Cargo[] = CARGOS.filter((c) => !isCoachCargo(c));
+
+export function emptyCargo(): Record<Cargo, number> {
+  const o = {} as Record<Cargo, number>;
+  for (const c of CARGOS) o[c] = 0;
+  return o;
+}
+
 export const TERRAINS = [
   "ocean",
   "coast",
@@ -294,6 +307,8 @@ export interface GameState {
     peakCash: number;
   };
   introSeen: boolean;
+  /** Tiles the last stroke could not lay — drawn as a broken-line warning. */
+  surveyGaps: { x: number; y: number }[];
 }
 
 export interface NewGameOpts {

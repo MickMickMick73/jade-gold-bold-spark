@@ -25,7 +25,7 @@ import { SCENARIOS, SIZE_META, DIFFICULTY_META } from "@/game/scenarios";
 import { deleteSlot, listSaves, loadSlot, saveSettings, saveSlot, type SaveMeta } from "@/game/save";
 import { applySettings, sfx, unlockAudio } from "@/game/audio";
 import type { Difficulty, MapSize, Region, Speed, Tool } from "@/game/types";
-import { CARGO_LABEL, CARGOS } from "@/game/types";
+import { CARGO_LABEL, COACH_CARGOS, FREIGHT_CARGOS, isCoachCargo } from "@/game/types";
 import { issueBond, repayBond, tradeStock } from "@/game/simulation";
 import { locosForYear, locoById } from "@/game/locomotives";
 import { netWorth, playerCompany } from "@/game/economy";
@@ -442,6 +442,7 @@ export function HUD() {
   const setTool = useGameStore((s) => s.setTool);
   const setOverlay = useGameStore((s) => s.setOverlay);
   const inspect = useGameStore((s) => s.inspectText);
+  const hoverTip = useGameStore((s) => s.hoverTip);
   const toast = useGameStore((s) => s.toast);
   useEffect(() => {
     if (!toast) return;
@@ -534,8 +535,13 @@ export function HUD() {
               ))}
             </div>
           ) : null}
+          {hoverTip && hoverTip !== inspect ? (
+            <div className="whitespace-pre-line rounded-md border border-border bg-elevated/95 px-3 py-2 text-[11px] leading-relaxed text-muted">
+              {hoverTip}
+            </div>
+          ) : null}
           {inspect ? (
-            <div className="whitespace-pre-line rounded-md border border-border bg-surface/95 px-3 py-2 text-xs text-fg">
+            <div className="whitespace-pre-line rounded-md border border-border bg-surface/95 px-3 py-2 text-xs leading-relaxed text-fg">
               {inspect}
             </div>
           ) : null}
@@ -769,9 +775,26 @@ export function TrainBuy() {
         ))}
       </div>
       <p className="mb-3 text-xs text-muted">{loco.blurb}</p>
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Consist</h3>
+      <p className="mb-3 text-xs text-muted">
+        Coaches carry passengers and mail. Wagons haul freight — match what a town wants.
+      </p>
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Coaches</h3>
       <div className="mb-3 flex flex-wrap gap-1">
-        {CARGOS.map((c) => (
+        {COACH_CARGOS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            disabled={draft.cars.length >= loco.capacity}
+            onClick={() => setDraft({ cars: [...draft.cars, c] })}
+            className="h-9 rounded-sm bg-elevated px-3 text-xs text-fg disabled:opacity-40"
+          >
+            + {CARGO_LABEL[c]}
+          </button>
+        ))}
+      </div>
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Wagons</h3>
+      <div className="mb-3 flex flex-wrap gap-1">
+        {FREIGHT_CARGOS.map((c) => (
           <button
             key={c}
             type="button"
@@ -791,7 +814,7 @@ export function TrainBuy() {
             className="h-8 rounded-sm bg-primary px-2 text-xs text-primary-fg"
             onClick={() => setDraft({ cars: draft.cars.filter((_, j) => j !== i) })}
           >
-            {CARGO_LABEL[c]} ×
+            {isCoachCargo(c) ? "Coach" : "Wagon"} · {CARGO_LABEL[c]} ×
           </button>
         ))}
       </div>

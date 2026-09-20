@@ -5,7 +5,7 @@ import {
   DIRS,
   N,
   S,
-  type Cargo,
+  emptyCargo,
   type City,
   type CityClass,
   type Craft,
@@ -31,10 +31,35 @@ export function cityClassFromPop(pop: number): CityClass {
   return "hamlet";
 }
 
-function emptyCargo(): Record<Cargo, number> {
-  const o = {} as Record<Cargo, number>;
-  for (const c of CARGOS) o[c] = 0;
-  return o;
+/** Absolute demand from population, year, and industries. Safe to call every month. */
+export function refreshCityMarkets(city: City, year: number) {
+  const pop = city.pop;
+  const d = city.demand;
+  for (const c of CARGOS) d[c] = 0;
+  d.pax = 8 + Math.round(pop / 2200);
+  d.mail = 4 + Math.round(pop / 4200);
+  d.goods = 3 + Math.round(pop / 4800) + (city.hasPort ? 4 : 0);
+  d.grain = 2 + Math.round(pop / 14000);
+  d.coal = 2 + Math.round(pop / 16000);
+  d.lumber = 1 + Math.round(pop / 18000);
+  d.cattle = 2 + Math.round(pop / 20000);
+  if (year >= 1859) d.oil = 1 + Math.round(pop / 22000) + (city.hasPort ? 3 : 0);
+  if (city.cls === "city" || city.cls === "metropolis") {
+    d.steel += 2;
+    d.iron += 1;
+    d.coal += 2;
+  }
+  for (const ind of city.industries) {
+    for (const c of ind.consumes) d[c] += 5;
+  }
+}
+
+export function packingHouse(): Industry {
+  return { kind: "Packing house", produces: "goods", consumes: ["cattle"] };
+}
+
+export function refinery(): Industry {
+  return { kind: "Refinery", produces: "goods", consumes: ["oil"] };
 }
 
 function isWater(t: string) {
@@ -137,16 +162,22 @@ export function growCities(state: GameState) {
     city.growth = g;
     const prev = city.cls;
     city.cls = cityClassFromPop(city.pop);
-    city.demand.pax = 8 + Math.round(city.pop / 2200);
-    city.demand.mail = 4 + Math.round(city.pop / 4200);
-    city.demand.goods = 3 + Math.round(city.pop / 4800);
+    refreshCityMarkets(city, state.year);
     if (city.cls !== prev && city.cls === "city") {
       if (!city.industries.some((i) => i.kind === "Factory")) {
         city.industries.push({ kind: "Factory", produces: "goods", consumes: ["steel", "lumber", "coal"] });
       }
+      if (!city.industries.some((i) => i.kind === "Packing house") && city.id % 2 === 0) {
+        city.industries.push(packingHouse());
+      }
+      refreshCityMarkets(city, state.year);
     }
     if (city.cls === "metropolis" && !city.industries.some((i) => /steel/i.test(i.kind))) {
       city.industries.push({ kind: "Steel mill", produces: "steel", consumes: ["iron", "coal"] });
+      if (state.year >= 1859 && !city.industries.some((i) => i.kind === "Refinery")) {
+        city.industries.push(refinery());
+      }
+      refreshCityMarkets(city, state.year);
     }
   }
 }
@@ -189,13 +220,10 @@ export function foundTowns(state: GameState, hooks: WorldHooks) {
   const pop = hub ? rng.int(4, 9) * 1000 : rng.int(2, 6) * 1000;
   const industries: Industry[] = [];
   if (rng.chance(0.25)) industries.push({ kind: "Mill", produces: "goods", consumes: ["lumber"] });
+  if (rng.chance(0.22)) industries.push(packingHouse());
+  if (state.year >= 1860 && rng.chance(0.18)) industries.push(refinery());
   const demand = emptyCargo();
-  demand.pax = 4 + Math.round(pop / 2500);
-  demand.mail = 2;
-  demand.goods = 2;
   const supply = emptyCargo();
-  supply.pax = demand.pax;
-  supply.mail = demand.mail;
   const city: City = {
     id: nid(state),
     name,
@@ -215,6 +243,9 @@ export function foundTowns(state: GameState, hooks: WorldHooks) {
     growth: 0.02,
     delivered: 0,
   };
+  refreshCityMarkets(city, state.year);
+  city.supply.pax = city.demand.pax;
+  city.supply.mail = city.demand.mail;
   const t = tileAt(state, x, y);
   if (t && t.t !== "coast") t.t = "plains";
   state.cities.push(city);

@@ -1,7 +1,7 @@
 import { locoById } from "./locomotives";
 import type { GameState, Tile, Tool } from "./types";
 import { CARGO_COLOR, DIRS, E, N, NE, NW, S, SE, SW, W } from "./types";
-import { tileAt } from "./pathfinding";
+import { canBridgeOcean, tileAt } from "./pathfinding";
 import { bitsFromPath, headingAlongPath, poseBehind, trackPairs } from "./track";
 import { carDir, cargoSprite, getSprites, hash2, headingDir } from "./sprites";
 
@@ -637,18 +637,47 @@ export function renderWorld(
   if (extras.ghost && extras.ghost.length) {
     ctx.save();
     ctx.globalAlpha = 0.72;
+    const pending = new Set(extras.ghost.map((g) => `${g.x},${g.y}`));
     extras.ghost.forEach((g, i) => {
       const bits = bitsFromPath(extras.ghost!, i);
       const gt = tileAt(state, g.x, g.y);
       const overWater = !!gt && (gt.t === "ocean" || gt.t === "river" || gt.t === "coast");
+      const fail = !!gt && gt.t === "ocean" && !gt.track && !canBridgeOcean(state, g.x, g.y, pending);
       const p = worldToScreen(cam, g.x, g.y, overWater ? 0.28 : 0, cw, ch);
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.scale(z, z);
-      diamond(ctx, 0, 0, "rgba(201,205,198,0.28)");
-      drawTrack(ctx, 0, 0, bits, "#d8d4cc", { bridge: overWater });
+      diamond(ctx, 0, 0, fail ? "rgba(180,90,76,0.4)" : "rgba(201,205,198,0.28)");
+      drawTrack(ctx, 0, 0, bits, fail ? "#b45a4c" : "#d8d4cc", { bridge: overWater });
       ctx.restore();
     });
+    ctx.restore();
+  }
+
+  // Broken spans the last stroke could not lay
+  for (const g of state.surveyGaps ?? []) {
+    if (tileAt(state, g.x, g.y)?.track) continue;
+    const t = tileAt(state, g.x, g.y);
+    const p = worldToScreen(cam, g.x, g.y, t && (t.t === "ocean" || t.t === "river") ? 0.28 : 0, cw, ch);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(z, z);
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = "#b45a4c";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(0, -TH / 2);
+    ctx.lineTo(TW / 2, 0);
+    ctx.lineTo(0, TH / 2);
+    ctx.lineTo(-TW / 2, 0);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#b45a4c";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("!", 0, -1);
     ctx.restore();
   }
 
@@ -890,11 +919,17 @@ export function renderWorld(
   for (const city of state.cities) {
     const p = worldToScreen(cam, city.x, city.y, 0.2, cw, ch);
     ctx.fillStyle = "rgba(12,13,11,0.65)";
-    const label = z > 0.85 ? `${city.name}  ${Math.max(1, Math.round(city.pop / 1000))}k` : city.name;
+    const label = z > 0.7 ? `${city.name}  ${Math.max(1, Math.round(city.pop / 1000))}k` : city.name;
     const w = ctx.measureText(label).width;
-    ctx.fillRect(p.x - w / 2 - 4, p.y - 44 * z - 12, w + 8, 16);
+    ctx.fillRect(p.x - w / 2 - 4, p.y - 44 * z - 16, w + 8, 20);
     ctx.fillStyle = city.served ? "#e8e4d8" : "#c9cdc6";
-    ctx.fillText(label, p.x, p.y - 44 * z);
+    ctx.fillText(label, p.x, p.y - 44 * z - 2);
+    const barW = Math.max(22, Math.min(48, w));
+    const frac = Math.max(0.06, Math.min(1, city.pop / 90000));
+    ctx.fillStyle = "rgba(12,13,11,0.55)";
+    ctx.fillRect(p.x - barW / 2, p.y - 44 * z + 2, barW, 3);
+    ctx.fillStyle = city.served ? "#7d9a72" : "#c4a574";
+    ctx.fillRect(p.x - barW / 2, p.y - 44 * z + 2, barW * frac, 3);
   }
 
   // Floats

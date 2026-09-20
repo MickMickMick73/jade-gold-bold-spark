@@ -311,30 +311,83 @@ export function lineRail(x0: number, y0: number, x1: number, y1: number): { x: n
   return line8(x0, y0, x1, y1);
 }
 
-/** Ocean trestles must grow from shore or existing bridge and stay within MAX_WATER_SPAN. */
-export function canBridgeOcean(state: GameState, x: number, y: number): boolean {
+function isWetTile(t: Tile | null): boolean {
+  return !!t && (t.t === "ocean" || t.t === "river");
+}
+
+/**
+ * Bresenham 8-dir skips the cardinal neighbor on a diagonal step.
+ * Over water that skip is a silent hole in the trestle — insert the missing tile.
+ */
+export function fillWaterDiagonals(
+  state: GameState,
+  pts: { x: number; y: number }[],
+): { x: number; y: number }[] {
+  if (pts.length < 2) return pts;
+  const out: { x: number; y: number }[] = [pts[0]!];
+  for (let i = 1; i < pts.length; i++) {
+    const a = out[out.length - 1]!;
+    const b = pts[i]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (Math.abs(dx) === 1 && Math.abs(dy) === 1) {
+      const v1 = { x: a.x, y: b.y };
+      const v2 = { x: b.x, y: a.y };
+      const t1 = tileAt(state, v1.x, v1.y);
+      const t2 = tileAt(state, v2.x, v2.y);
+      const endsWet = isWetTile(tileAt(state, a.x, a.y)) || isWetTile(tileAt(state, b.x, b.y));
+      const w1 = isWetTile(t1);
+      const w2 = isWetTile(t2);
+      if (endsWet || w1 || w2) {
+        const via = w1 && !w2 ? v1 : w2 && !w1 ? v2 : v1;
+        if (via.x !== a.x || via.y !== a.y) out.push(via);
+      }
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+function markedOcean(
+  state: GameState,
+  x: number,
+  y: number,
+  pending?: ReadonlySet<string>,
+): boolean {
+  const t = tileAt(state, x, y);
+  if (!t) return false;
+  if (t.track) return true;
+  return !!pending?.has(`${x},${y}`);
+}
+
+/** Ocean trestles must grow from shore or existing/pending bridge and stay within MAX_WATER_SPAN. */
+export function canBridgeOcean(
+  state: GameState,
+  x: number,
+  y: number,
+  pending?: ReadonlySet<string>,
+): boolean {
   const t = tileAt(state, x, y);
   if (!t || t.t !== "ocean") return true;
-  let rooted = false;
-  for (const d of DIRS) {
-    const n = tileAt(state, x + d.dx, y + d.dy);
-    if (!n) continue;
-    if (n.t !== "ocean") rooted = true;
-    if (n.track) rooted = true;
-  }
-  if (!rooted) return false;
+
   const seen = new Set<string>();
   const stack = [[x, y]];
+  let shore = false;
   while (stack.length) {
     const [cx, cy] = stack.pop()!;
     const k = `${cx},${cy}`;
     if (seen.has(k)) continue;
     const tile = tileAt(state, cx, cy);
-    if (!tile || tile.t !== "ocean") continue;
-    if (!(cx === x && cy === y) && !tile.track) continue;
+    if (!tile) continue;
+    if (tile.t !== "ocean") {
+      shore = true;
+      continue;
+    }
+    const here = cx === x && cy === y;
+    if (!here && !markedOcean(state, cx, cy, pending)) continue;
     seen.add(k);
     if (seen.size > MAX_WATER_SPAN) return false;
     for (const d of DIRS) stack.push([cx + d.dx, cy + d.dy]);
   }
-  return true;
+  return shore;
 }

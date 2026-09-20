@@ -89,6 +89,7 @@ interface UIState {
   toast: string | null;
   trainDraft: TrainDraft;
   inspectText: string;
+  hoverTip: string;
   cinematic: Cinematic | null;
   locoFocus: LocoFocus | null;
   net: NetSnap;
@@ -101,6 +102,7 @@ interface UIState {
   setToast: (t: string | null) => void;
   setDraft: (d: Partial<TrainDraft>) => void;
   setInspect: (t: string) => void;
+  setHoverTip: (t: string) => void;
   setCinematic: (c: Cinematic | null) => void;
   setLocoFocus: (f: LocoFocus | null) => void;
   setNet: (n: NetSnap) => void;
@@ -176,6 +178,7 @@ export const useGameStore = create<UIState>((set) => ({
   toast: null,
   trainDraft: { locoId: "pioneer", cars: ["pax", "mail"], route: [] },
   inspectText: "",
+  hoverTip: "",
   cinematic: null,
   locoFocus: null,
   net: { role: "solo", code: "", selfId: "", hostId: "", started: false, names: {}, peers: [] },
@@ -197,6 +200,7 @@ export const useGameStore = create<UIState>((set) => ({
   setToast: (toast) => set({ toast }),
   setDraft: (d) => set((st) => ({ trainDraft: { ...st.trainDraft, ...d } })),
   setInspect: (inspectText) => set({ inspectText }),
+  setHoverTip: (hoverTip) => set({ hoverTip }),
   setCinematic: (cinematic) => set({ cinematic }),
   setLocoFocus: (locoFocus) => set({ locoFocus }),
   setNet: (net) => set({ net }),

@@ -122,6 +122,7 @@ function migrateState(data: GameState) {
     if (city.delivered === undefined) city.delivered = 0;
   }
   migrateYard(data);
+  if (!data.surveyGaps) data.surveyGaps = [];
 }
 
 export function loadSlot(slot: number): GameState | null {

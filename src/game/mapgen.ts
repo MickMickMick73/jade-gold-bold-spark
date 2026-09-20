@@ -3,9 +3,8 @@ import { makeRng } from "./rng";
 import { cityNames, aiCompanyName } from "./names";
 import { SIZE_META } from "./scenarios";
 import {
-  CARGOS,
   COMPANY_COLORS,
-  type Cargo,
+  emptyCargo,
   type City,
   type Company,
   type GameState,
@@ -16,6 +15,7 @@ import {
   type Tile,
   SAVE_VERSION,
 } from "./types";
+import { packingHouse, refinery, refreshCityMarkets } from "./growth";
 
 function fbm(noise: (x: number, y: number) => number, x: number, y: number, oct = 5) {
   let v = 0;
@@ -29,12 +29,6 @@ function fbm(noise: (x: number, y: number) => number, x: number, y: number, oct 
     f *= 2;
   }
   return v / s;
-}
-
-function emptyCargo(): Record<Cargo, number> {
-  const o = {} as Record<Cargo, number>;
-  for (const c of CARGOS) o[c] = 0;
-  return o;
 }
 
 export function generateWorld(opts: NewGameOpts): GameState {
@@ -213,15 +207,10 @@ export function generateWorld(opts: NewGameOpts): GameState {
     const industries: Industry[] = [];
     if (rng.chance(0.35)) industries.push({ kind: "Factory", produces: "goods", consumes: ["steel", "lumber", "coal"] });
     if (rng.chance(0.2)) industries.push({ kind: "Steel mill", produces: "steel", consumes: ["iron", "coal"] });
+    if (rng.chance(0.28)) industries.push(packingHouse());
+    if ((opts.year ?? sc?.year ?? 1830) >= 1860 && rng.chance(0.22)) industries.push(refinery());
     const demand = emptyCargo();
-    demand.pax = 8 + Math.round(pop / 2000);
-    demand.mail = 4 + Math.round(pop / 4000);
-    demand.goods = 3 + Math.round(pop / 5000);
-    demand.grain = 3;
-    demand.coal = 2;
     const supply = emptyCargo();
-    supply.pax = demand.pax;
-    supply.mail = demand.mail;
     const cls = pop >= 24000 ? "city" : pop >= 9000 ? "town" : "hamlet";
     let portX: number | undefined;
     let portY: number | undefined;
@@ -263,6 +252,10 @@ export function generateWorld(opts: NewGameOpts): GameState {
       portY: hasPort ? portY : undefined,
     });
     tiles[y * w + x]!.t = "plains";
+    refreshCityMarkets(cities[cities.length - 1]!, startYear);
+    const born = cities[cities.length - 1]!;
+    born.supply.pax = born.demand.pax;
+    born.supply.mail = born.demand.mail;
   }
 
   if ((opts.year ?? sc?.year ?? 1830) >= 1869) {
@@ -377,6 +370,7 @@ export function generateWorld(opts: NewGameOpts): GameState {
     playTime: 0,
     stats: { cargoDelivered: emptyStats, citiesConnected: 0, peakCash: companies[0]!.cash },
     introSeen: false,
+    surveyGaps: [],
   };
 }
 

@@ -1,8 +1,8 @@
 import type { GameState, IncidentKind, Speed, Tool } from "./types";
 import { CARGO_LABEL } from "./types";
 import { generateWorld } from "./mapgen";
-import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, placeTrackPath, recomputeAllTracks, simulate, type SimHooks } from "./simulation";
-import { pathForSurvey, tileAt, lineRail } from "./pathfinding";
+import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, placeTrackPath, recomputeAllTracks, simulate, tryBuyTrain, type SimHooks } from "./simulation";
+import { pathForSurvey, tileAt, lineRail, fillWaterDiagonals } from "./pathfinding";
 import { renderMinimap, renderWorld, screenToWorld, iso, type Cam } from "./render";
 import { sfx as playSfx, unlockAudio } from "./audio";
 import { snapHud, useGameStore } from "./store";
@@ -12,6 +12,7 @@ import { formatCashFull } from "@/lib/utils";
 import { endingCinematic, locoIntroCinematic } from "./cinematics";
 import { headingDir, loadSprites } from "./sprites";
 import { headingAlongPath, poseBehind } from "./track";
+import { describeCity, describeStation, describeTile, hoverTip } from "./inspect";
 import { dispatchWrecker, openIncident, rerouteAround } from "./yard";
 import { applyTrack, getNet, packSnap, type NetCmd } from "./net";
 
@@ -188,6 +189,7 @@ export class Engine {
         if (st.overlay === "cinematic" || st.overlay === "locodetail") return;
         st.setOverlay("crisis");
       },
+      toast: (msg) => useGameStore.getState().setToast(msg),
     };
   }
 
@@ -316,8 +318,13 @@ export class Engine {
     }
     const t = this.tileFromEvent(e);
     this.hover = { x: t.x, y: t.y };
+    if (this.state && this.playingUi()) {
+      const tip = hoverTip(this.state, t.x, t.y);
+      if (useGameStore.getState().hoverTip !== tip) useGameStore.getState().setHoverTip(tip);
+    }
     if (this.paintFrom && this.playingUi()) {
-      this.ghost = lineRail(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
+      const raw = lineRail(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
+      this.ghost = this.state ? fillWaterDiagonals(this.state, raw) : raw;
     }
   };
 
@@ -481,9 +488,9 @@ export class Engine {
         break;
       }
       case "train": {
-        const tr = buyTrain(this.state, companyId, cmd.locoId, cmd.cars, cmd.route, hooks);
+        const { train: tr, error } = tryBuyTrain(this.state, companyId, cmd.locoId, cmd.cars, cmd.route, hooks);
         if (!tr && companyId === this.state.playerId) {
-          useGameStore.getState().setToast("Need two linked stations, a consist, and cash.");
+          useGameStore.getState().setToast(error || "Need two linked stations, a consist, and cash.");
         } else if (tr && companyId === this.state.playerId) {
           useGameStore.getState().setToast(`${tr.name} on the line`);
         }
@@ -587,29 +594,20 @@ export class Engine {
     const st = this.state.stations.find((s) => s.x === x && s.y === y);
     if (st) {
       useGameStore.getState().setSelected("station", st.id);
-      useGameStore.getState().setInspect(`${st.name}\nWaiting cargo on the platform.`);
+      useGameStore.getState().setInspect(describeStation(this.state, st));
       return;
     }
     const city = this.state.cities.find((c) => Math.abs(c.x - x) + Math.abs(c.y - y) <= 1);
     if (city) {
       useGameStore.getState().setSelected("city", city.id);
-      const tags = [
-        city.served ? "rail" : "unserved",
-        city.hasPort ? "port" : "",
-        city.hasAirport ? "air" : "",
-        city.highway ? "highway" : "",
-      ].filter(Boolean);
-      useGameStore.getState().setInspect(
-        `${city.name}  ·  ${city.cls}\nPop ${city.pop.toLocaleString("en-US")}  ·  ${city.growth >= 0 ? "+" : ""}${(city.growth * 100).toFixed(1)}% /yr\nFounded ${city.foundedYear}  ·  ${tags.join(" · ")}\n${city.industries.map((i) => i.kind).join(", ") || "Market town"}`,
-      );
+      useGameStore.getState().setInspect(describeCity(city));
       this.centerOn(city.x, city.y);
       return;
     }
     const tile = tileAt(this.state, x, y);
     if (tile) {
       useGameStore.getState().setSelected("clear");
-      const res = tile.res ? `  ·  ${tile.res}` : "";
-      useGameStore.getState().setInspect(`${tile.t}${res}${tile.track ? "  ·  track" : ""}${tile.road ? "  ·  highway" : ""}`);
+      useGameStore.getState().setInspect(describeTile(this.state, x, y));
     }
   }
 

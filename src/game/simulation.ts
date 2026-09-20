@@ -1,7 +1,7 @@
 import { makeRng } from "./rng";
 import { trainName } from "./names";
 import { locosForYear, locoById, tilesPerYear, type LocoDef } from "./locomotives";
-import { moveCrafts, tickWorld, findAirfield } from "./growth";
+import { moveCrafts, tickWorld, findAirfield, refreshCityMarkets } from "./growth";
 import {
   CARGOS,
   DIRS8,
@@ -14,7 +14,7 @@ import {
   type Tile,
   type Train,
 } from "./types";
-import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, lineRail, canBridgeOcean } from "./pathfinding";
+import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, lineRail, canBridgeOcean, fillWaterDiagonals } from "./pathfinding";
 import { advanceRail, connectPath, headingAlongPath, railLen, sanitizeParallel } from "./track";
 import {
   avoidBlocked,
@@ -43,6 +43,7 @@ export interface SimHooks {
   sfx: (name: "build" | "cash" | "bell" | "break" | "click") => void;
   locoArrived: (id: string) => void;
   incidentOpened: (id: number) => void;
+  toast?: (msg: string) => void;
 }
 
 const noop: SimHooks = {
@@ -120,6 +121,7 @@ export function placeTrack(
   y: number,
   companyId: number,
   hooks: SimHooks = noop,
+  pending?: ReadonlySet<string>,
 ): boolean {
   if (!inBounds(state, x, y)) return false;
   const t = state.tiles[idx(state, x, y)]!;
@@ -130,14 +132,14 @@ export function placeTrack(
   }
   const cost = buildCostFor(state, t);
   if (cost === null) return false;
-  if (t.t === "ocean" && !canBridgeOcean(state, x, y)) return false;
+  if (t.t === "ocean" && !canBridgeOcean(state, x, y, pending)) return false;
   if (!charge(state, companyId, cost)) return false;
   t.track = TRACK_LAID;
   t.owner = companyId;
   t.bridge = t.t === "river" || t.t === "coast" || t.t === "ocean";
   t.tunnel = t.t === "mountains";
   refreshConnections(state, x, y);
-  const c = state.companies.find((x) => x.id === companyId);
+  const c = state.companies.find((co) => co.id === companyId);
   if (c) c.trackTiles += 1;
   if (companyId === state.playerId) hooks.sfx("build");
   return true;
@@ -161,13 +163,36 @@ export function placeTrackPath(
   companyId: number,
   hooks: SimHooks = noop,
 ): number {
+  const filled = fillWaterDiagonals(state, pts);
+  const pending = new Set(filled.map((p) => `${p.x},${p.y}`));
   let n = 0;
-  for (const p of pts) {
-    if (placeTrack(state, p.x, p.y, companyId, hooks)) n++;
+  const failed: { x: number; y: number }[] = [];
+  for (const p of filled) {
+    const before = tileAt(state, p.x, p.y);
+    const had = !!before?.track && before.owner === companyId;
+    if (placeTrack(state, p.x, p.y, companyId, hooks, pending)) n++;
+    else if (!had && !tileAt(state, p.x, p.y)?.track) failed.push(p);
   }
-  connectPath(state, pts);
-  for (const p of pts) refreshConnections(state, p.x, p.y);
-  sanitizeParallel(state, pts);
+  connectPath(state, filled);
+  for (const p of filled) refreshConnections(state, p.x, p.y);
+  sanitizeParallel(state, filled);
+  const strokeKeys = new Set(filled.map((p) => `${p.x},${p.y}`));
+  const kept = (state.surveyGaps ?? []).filter((g) => {
+    if (strokeKeys.has(`${g.x},${g.y}`)) return false;
+    const t = tileAt(state, g.x, g.y);
+    return !!t && !t.track;
+  });
+  state.surveyGaps = [...kept, ...failed];
+  if (failed.length && companyId === state.playerId) {
+    const wet = failed.some((p) => {
+      const t = tileAt(state, p.x, p.y);
+      return t && (t.t === "ocean" || t.t === "river");
+    });
+    const msg = wet
+      ? `Trestle incomplete — ${failed.length} water tile${failed.length === 1 ? "" : "s"} never laid. The red dashed span is the gap.`
+      : `Line incomplete — ${failed.length} tile${failed.length === 1 ? "" : "s"} skipped.`;
+    hooks.toast?.(msg);
+  }
   return n;
 }
 
@@ -261,17 +286,41 @@ export function buyTrain(
   route: number[],
   hooks: SimHooks = noop,
 ): Train | null {
+  return tryBuyTrain(state, companyId, locoId, cargos, route, hooks).train;
+}
+
+export function tryBuyTrain(
+  state: GameState,
+  companyId: number,
+  locoId: string,
+  cargos: Cargo[],
+  route: number[],
+  hooks: SimHooks = noop,
+): { train: Train | null; error: string | null } {
   const loco = locoById(locoId);
-  if (loco.year > state.year) return null;
+  if (loco.year > state.year) {
+    return { train: null, error: `${loco.name} is not built yet — wait until ${loco.year}.` };
+  }
   const cars: Train["cars"] = cargos.slice(0, loco.capacity).map((c) => ({ cargo: c, amount: 0 }));
-  if (cars.length === 0) return null;
-  if (route.length < 2) return null;
+  if (cars.length === 0) return { train: null, error: "Add coaches or wagons to the consist." };
+  if (route.length < 2) return { train: null, error: "Pick at least two stations for the route." };
   const a = state.stations.find((s) => s.id === route[0]);
   const b = state.stations.find((s) => s.id === route[1]);
-  if (!a || !b) return null;
+  if (!a || !b) return { train: null, error: "Those stations are gone." };
   const path = pathOnTrack(state, a.x, a.y, b.x, b.y, companyId);
-  if (!path || path.length < 2) return null;
-  if (!charge(state, companyId, loco.cost + cars.length * 2500)) return null;
+  if (!path || path.length < 2) {
+    const gaps = (state.surveyGaps ?? []).length;
+    return {
+      train: null,
+      error: gaps
+        ? "Track is broken — a red dashed gap is still open, often over water."
+        : "Stations are not linked by your track. Look for a gap in the line.",
+    };
+  }
+  const price = loco.cost + cars.length * 2500;
+  if (!charge(state, companyId, price)) {
+    return { train: null, error: `Need $${price.toLocaleString("en-US")} for the locomotive and cars.` };
+  }
   const used = new Set(state.trains.map((t) => t.name));
   const rng = makeRng(state.seed + state.nextId, 9);
   const tr: Train = {
@@ -299,7 +348,7 @@ export function buyTrain(
   const co = state.companies.find((c) => c.id === companyId);
   if (co) co.trainsBuilt += 1;
   if (companyId === state.playerId) hooks.sfx("bell");
-  return tr;
+  return { train: tr, error: null };
 }
 
 function stationOf(state: GameState, id: number) {
@@ -486,9 +535,7 @@ function spawnCargo(state: GameState) {
   for (const city of state.cities) {
     city.supply.pax = Math.min(40, Math.round((6 + city.pop / 2500) * paxMul(city, state)));
     city.supply.mail = Math.min(24, Math.round((3 + city.pop / 4000) * paxMul(city, state)));
-    city.demand.pax = city.supply.pax;
-    city.demand.mail = city.supply.mail;
-    city.demand.goods = 4 + Math.round(city.pop / 5000) + (city.hasPort ? 4 : 0);
+    refreshCityMarkets(city, state.year);
     if (city.hasPort) {
       city.supply.goods = Math.min(24, (city.supply.goods || 0) + 5);
       city.supply.oil = Math.min(16, (city.supply.oil || 0) + 2);
