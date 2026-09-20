@@ -5,8 +5,7 @@ import { moveCrafts, tickWorld, findAirfield } from "./growth";
 import {
   CARGOS,
   DIRS8,
-  N,
-  S,
+  TRACK_LAID,
   type Cargo,
   type FloatingText,
   type GameState,
@@ -15,8 +14,8 @@ import {
   type Tile,
   type Train,
 } from "./types";
-import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line8, canBridgeOcean } from "./pathfinding";
-import { advanceRail, connectPath, railLen } from "./track";
+import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, lineRail, canBridgeOcean } from "./pathfinding";
+import { advanceRail, connectPath, headingAlongPath, railLen, sanitizeParallel } from "./track";
 import {
   avoidBlocked,
   ensureYard,
@@ -91,17 +90,14 @@ function recomputeTrackBits(state: GameState, x: number, y: number) {
   if (!t || t.track === 0) return;
   let bits = 0;
   for (const d of DIRS8) {
+    if (!(t.track & d.bit)) continue;
     const n = tileAt(state, x + d.dx, y + d.dy);
     if (!n || n.track === 0) continue;
     if (n.owner && t.owner && n.owner !== t.owner) continue;
-    const diag = d.dx !== 0 && d.dy !== 0;
-    if (diag) {
-      if (t.track & d.bit && n.track & d.opp) bits |= d.bit;
-    } else {
-      bits |= d.bit;
-    }
+    if (!(n.track & d.opp)) continue;
+    bits |= d.bit;
   }
-  t.track = bits === 0 ? N | S : bits;
+  t.track = bits || TRACK_LAID;
 }
 
 export function refreshConnections(state: GameState, x: number, y: number) {
@@ -115,6 +111,7 @@ export function recomputeAllTracks(state: GameState) {
       if (state.tiles[y * state.mapW + x]!.track) recomputeTrackBits(state, x, y);
     }
   }
+  sanitizeParallel(state);
 }
 
 export function placeTrack(
@@ -135,7 +132,7 @@ export function placeTrack(
   if (cost === null) return false;
   if (t.t === "ocean" && !canBridgeOcean(state, x, y)) return false;
   if (!charge(state, companyId, cost)) return false;
-  t.track = N | S;
+  t.track = TRACK_LAID;
   t.owner = companyId;
   t.bridge = t.t === "river" || t.t === "coast" || t.t === "ocean";
   t.tunnel = t.t === "mountains";
@@ -155,13 +152,22 @@ export function placeTrackLine(
   companyId: number,
   hooks: SimHooks = noop,
 ): number {
-  const pts = line8(x0, y0, x1, y1);
+  return placeTrackPath(state, lineRail(x0, y0, x1, y1), companyId, hooks);
+}
+
+export function placeTrackPath(
+  state: GameState,
+  pts: { x: number; y: number }[],
+  companyId: number,
+  hooks: SimHooks = noop,
+): number {
   let n = 0;
   for (const p of pts) {
     if (placeTrack(state, p.x, p.y, companyId, hooks)) n++;
   }
   connectPath(state, pts);
   for (const p of pts) refreshConnections(state, p.x, p.y);
+  sanitizeParallel(state, pts);
   return n;
 }
 
@@ -280,7 +286,7 @@ export function buyTrain(
     segT: 0,
     x: a.x,
     y: a.y,
-    heading: 0,
+    heading: headingAlongPath(path, 0),
     companyId,
     status: "running",
     brokenFor: 0,
@@ -316,6 +322,7 @@ function rebuildPath(state: GameState, tr: Train): boolean {
   tr.status = "running";
   tr.x = path[0]!.x;
   tr.y = path[0]!.y;
+  tr.heading = headingAlongPath(path, 0);
   return true;
 }
 
@@ -518,8 +525,7 @@ function aiThink(state: GameState, hooks: SimHooks) {
       if (path) {
         const budgetTiles = Math.min(path.length, 8);
         const slice = path.slice(0, budgetTiles);
-        for (const p of slice) placeTrack(state, p.x, p.y, co.id, hooks);
-        connectPath(state, slice);
+        placeTrackPath(state, slice, co.id, hooks);
         const start = path[0]!;
         const end = path[Math.min(path.length - 1, budgetTiles - 1)]!;
         if (!state.stations.some((s) => s.x === start.x && s.y === start.y)) {
@@ -547,8 +553,7 @@ function aiThink(state: GameState, hooks: SimHooks) {
         if (path) {
           const n = Math.min(6, path.length);
           const slice = path.slice(0, n);
-          for (const p of slice) placeTrack(state, p.x, p.y, co.id, hooks);
-          connectPath(state, slice);
+          placeTrackPath(state, slice, co.id, hooks);
           const last = path[n - 1]!;
           if (n === path.length) placeStation(state, last.x, last.y, co.id, hooks);
         }

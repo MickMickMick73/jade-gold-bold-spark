@@ -201,10 +201,7 @@ export function pathOnTrack(
       if (tile.owner !== companyId && tile.owner !== 0) return null;
       if (avoid && avoid(x, y) && !(x === tx && y === ty) && !(x === sx && y === sy)) return null;
       if (from && dir) {
-        const diag = dir.dx !== 0 && dir.dy !== 0;
-        if (diag) {
-          if (!(from.track & dir.bit) || !(tile.track & dir.opp)) return null;
-        }
+        if (!(from.track & dir.bit) || !(tile.track & dir.opp)) return null;
       }
       return dir.dx !== 0 && dir.dy !== 0 ? Math.SQRT2 : 1;
     },
@@ -303,6 +300,15 @@ export function line8(x0: number, y0: number, x1: number, y1: number): { x: numb
     if (out.length > 800) break;
   }
   return out;
+}
+
+/** Snap near-axis drags so a second parallel doesn't wobble onto the first. */
+export function lineRail(x0: number, y0: number, x1: number, y1: number): { x: number; y: number }[] {
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  if (dx >= dy * 3) y1 = y0;
+  else if (dy >= dx * 3) x1 = x0;
+  return line8(x0, y0, x1, y1);
 }
 
 /** Ocean trestles must grow from shore or existing bridge and stay within MAX_WATER_SPAN. */

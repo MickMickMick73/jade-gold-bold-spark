@@ -171,23 +171,22 @@ export function hash2(x: number, y: number): number {
 }
 
 export function headingDir(heading: number): number {
-  const q = (((Math.round(heading / (Math.PI / 2)) % 4) + 4) % 4);
-  return [1, 2, 3, 0][q]!;
+  // Grid atan2 → isometric sprite index. Dominant axis, not round-to-quadrant:
+  // a N/S tangent with a tiny x wobble used to snap to east and put coaches
+  // 90° across the locomotive.
+  //   0  loco-1 / coach-1  screen down-left  = grid south
+  //   1  loco-2 / coach-2  screen down-right = grid east
+  //   2  loco-3 / coach-3  screen up-right   = grid north
+  //   3  loco-4 / coach-4  screen up-left    = grid west
+  const dx = Math.cos(heading);
+  const dy = Math.sin(heading);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 1 : 3;
+  return dy >= 0 ? 0 : 2;
 }
 
-/** Rolling stock only has reliable E/W art; N/S is that sprite mirrored onto the other iso diagonal. */
+/** Same four facings as the locomotive — coaches have N/S art, do not reuse E/W. */
 export function carDir(heading: number): { idx: number; flipX: boolean } {
-  const q = (((Math.round(heading / (Math.PI / 2)) % 4) + 4) % 4);
-  switch (q) {
-    case 0:
-      return { idx: 1, flipX: false };
-    case 1:
-      return { idx: 1, flipX: true };
-    case 2:
-      return { idx: 3, flipX: false };
-    default:
-      return { idx: 3, flipX: true };
-  }
+  return { idx: headingDir(heading), flipX: false };
 }
 
 export function cargoSprite(bank: SpriteBank, res: Resource | string): HTMLImageElement | undefined {

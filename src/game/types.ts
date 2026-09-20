@@ -42,6 +42,8 @@ export const NE = 16;
 export const SE = 32;
 export const SW = 64;
 export const NW = 128;
+/** Occupied tile with no links yet — never treated as N/S, so parallel lines don't auto-join. */
+export const TRACK_LAID = 256;
 export const DIRS = [
   { bit: N, dx: 0, dy: -1, opp: S },
   { bit: E, dx: 1, dy: 0, opp: W },

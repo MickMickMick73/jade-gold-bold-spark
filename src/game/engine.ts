@@ -1,8 +1,8 @@
 import type { GameState, IncidentKind, Speed, Tool } from "./types";
 import { CARGO_LABEL } from "./types";
 import { generateWorld } from "./mapgen";
-import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, recomputeAllTracks, simulate, type SimHooks } from "./simulation";
-import { pathForSurvey, tileAt, line8 } from "./pathfinding";
+import { bulldoze, buyTrain, daysPerSecond, placePlayerAirport, placeStation, placeTrackLine, placeTrackPath, recomputeAllTracks, simulate, type SimHooks } from "./simulation";
+import { pathForSurvey, tileAt, lineRail } from "./pathfinding";
 import { renderMinimap, renderWorld, screenToWorld, iso, type Cam } from "./render";
 import { sfx as playSfx, unlockAudio } from "./audio";
 import { snapHud, useGameStore } from "./store";
@@ -10,7 +10,8 @@ import { saveSlot } from "./save";
 import { locoById } from "./locomotives";
 import { formatCashFull } from "@/lib/utils";
 import { endingCinematic, locoIntroCinematic } from "./cinematics";
-import { loadSprites } from "./sprites";
+import { headingDir, loadSprites } from "./sprites";
+import { headingAlongPath, poseBehind } from "./track";
 import { dispatchWrecker, openIncident, rerouteAround } from "./yard";
 import { applyTrack, getNet, packSnap, type NetCmd } from "./net";
 
@@ -115,7 +116,7 @@ export class Engine {
       const id = this.state.playerId;
       const path = pathForSurvey(this.state, a.x, a.y, b.x, b.y);
       if (path) {
-        for (const p of path) placeTrackLine(this.state, p.x, p.y, p.x, p.y, id);
+        placeTrackPath(this.state, path, id);
       } else {
         placeTrackLine(this.state, a.x, a.y, b.x, b.y, id);
       }
@@ -130,6 +131,7 @@ export class Engine {
   startPlay(state: GameState) {
     this.mode = "play";
     this.state = state;
+    recomputeAllTracks(state);
     this.floats = [];
     this.endingReel = false;
     this.locoQueue = [];
@@ -315,7 +317,7 @@ export class Engine {
     const t = this.tileFromEvent(e);
     this.hover = { x: t.x, y: t.y };
     if (this.paintFrom && this.playingUi()) {
-      this.ghost = line8(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
+      this.ghost = lineRail(this.paintFrom.x, this.paintFrom.y, t.x, t.y);
     }
   };
 
@@ -460,7 +462,7 @@ export class Engine {
         placeTrackLine(this.state, cmd.x0, cmd.y0, cmd.x1, cmd.y1, companyId, hooks);
         break;
       case "bulldoze":
-        for (const p of line8(cmd.x0, cmd.y0, cmd.x1, cmd.y1)) bulldoze(this.state, p.x, p.y, companyId, hooks);
+        for (const p of lineRail(cmd.x0, cmd.y0, cmd.x1, cmd.y1)) bulldoze(this.state, p.x, p.y, companyId, hooks);
         break;
       case "station": {
         const st = placeStation(this.state, cmd.x, cmd.y, companyId, hooks);
@@ -731,6 +733,38 @@ export class Engine {
       station: (x: number, y: number) => this.tryStation(x, y),
       buy: (loco: string, cars: string[], route: number[]) =>
         this.netAct({ op: "train", locoId: loco, cars: cars as import("./types").Cargo[], route }),
+      newGame: (seed?: number) => {
+        const state = generateWorld({
+          companyName: "QA Line",
+          size: "small",
+          difficulty: "easy",
+          region: "columbia",
+          rivals: 0,
+          seed: seed ?? 1848,
+          year: 1860,
+        });
+        this.startPlay(state);
+        useGameStore.getState().setOverlay(null);
+      },
+      trainDebug: () => {
+        const tr = this.state?.trains[0];
+        if (!tr) return null;
+        const face = tr.path.length >= 2 ? headingAlongPath(tr.path, tr.pathIdx) : tr.heading;
+        const cars = tr.cars.map((_, i) => {
+          const pose = poseBehind(tr.path, tr.pathIdx, tr.segT, (i + 1) * 0.42);
+          const h = tr.path.length >= 2 ? headingAlongPath(tr.path, pose.idx) : pose.heading;
+          return { idx: pose.idx, heading: h, dir: headingDir(h) };
+        });
+        return {
+          heading: tr.heading,
+          face,
+          dir: headingDir(face),
+          pathIdx: tr.pathIdx,
+          x: tr.x,
+          y: tr.y,
+          cars,
+        };
+      },
       forceIncident: (kind?: string) => {
         if (!this.state) return null;
         const k = (kind as IncidentKind) || "hotbox";
@@ -760,6 +794,19 @@ declare global {
       setZoom: (z: number) => void;
       queueLocoIntro: (id: string) => void;
       closeLocoSheet: () => void;
+      paint: (x0: number, y0: number, x1: number, y1: number) => void;
+      station: (x: number, y: number) => void;
+      buy: (loco: string, cars: string[], route: number[]) => void;
+      newGame: (seed?: number) => void;
+      trainDebug: () => {
+        heading: number;
+        face: number;
+        dir: number;
+        pathIdx: number;
+        x: number;
+        y: number;
+        cars: { idx: number; heading: number; dir: number }[];
+      } | null;
       forceIncident: (kind?: string) => number | null;
     };
   }

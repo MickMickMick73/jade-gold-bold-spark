@@ -2,7 +2,7 @@ import { locoById } from "./locomotives";
 import type { GameState, Tile, Tool } from "./types";
 import { CARGO_COLOR, DIRS, E, N, NE, NW, S, SE, SW, W } from "./types";
 import { tileAt } from "./pathfinding";
-import { bitsFromPath, poseBehind, trackPairs } from "./track";
+import { bitsFromPath, headingAlongPath, poseBehind, trackPairs } from "./track";
 import { carDir, cargoSprite, getSprites, hash2, headingDir } from "./sprites";
 
 export const TW = 48;
@@ -201,10 +201,17 @@ function isoArm(bit: number): [number, number] {
 
 type RailCurve = { p0: { x: number; y: number }; p1: { x: number; y: number }; p2: { x: number; y: number } };
 
-function railCurves(x: number, y: number, bits: number, ext = 1.05): RailCurve[] {
+function railCurves(x: number, y: number, bits: number, ext = 1.04): RailCurve[] {
   return trackPairs(bits).map(([a, b]) => {
     const A = isoArm(a);
     const B = isoArm(b);
+    if (a === b) {
+      return {
+        p0: { x, y },
+        p1: { x: x + A[0] * 0.55 * ext, y: y + A[1] * 0.55 * ext },
+        p2: { x: x + A[0] * ext, y: y + A[1] * ext },
+      };
+    }
     return {
       p0: { x: x + A[0] * ext, y: y + A[1] * ext },
       p1: { x, y },
@@ -360,13 +367,13 @@ function drawTrack(
     ctx.stroke();
   }
 
-  if (pairs.length >= 2) {
+  if (pairs.length === 2) {
     ctx.fillStyle = "#3a342c";
     ctx.beginPath();
-    ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.15;
+    ctx.lineWidth = 1.05;
     ctx.stroke();
   }
 
@@ -755,11 +762,12 @@ export function renderWorld(
       for (let i = tr.cars.length; i >= 0; i--) {
         const pose =
           i === 0 || tr.path.length < 2
-            ? { x: tr.x, y: tr.y, heading: tr.heading }
+            ? { x: tr.x, y: tr.y, heading: tr.heading, idx: tr.pathIdx }
             : poseBehind(tr.path, tr.pathIdx, tr.segT, i * 0.42);
         const bp = worldToScreen(cam, pose.x, pose.y, lift, cw, ch);
-        const dir = headingDir(pose.heading);
-        const rolling = carDir(pose.heading);
+        const face =
+          tr.path.length >= 2 ? headingAlongPath(tr.path, pose.idx ?? tr.pathIdx) : pose.heading;
+        const dir = headingDir(face);
         const car = tr.cars[i - 1];
         const isPax = !car || car.cargo === "pax" || car.cargo === "mail";
         const sheet = i === 0 ? (loco.kind === "diesel" ? null : spr.loco) : isPax ? spr.coach : spr.freight;
@@ -769,13 +777,11 @@ export function renderWorld(
           if (dir === 2 || dir === 3) ctx.scale(-1, 1);
           drawAnchored(ctx, spr.diesel, 0, 5 * z, 30 * z, 20 * z);
         } else if (sheet) {
-          const isCar = i > 0;
-          const idx = isCar ? rolling.idx : dir;
-          const img = sheet[idx]!;
+          const img = sheet[dir]!;
           const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
           const w = (i === 0 ? 28 : 24) * z;
           const h = w / ar;
-          drawAnchored(ctx, img, bp.x, bp.y + 5 * z, w, h, isCar && rolling.flipX);
+          drawAnchored(ctx, img, bp.x, bp.y + 5 * z, w, h);
         }
         ctx.restore();
         if (i === 0 && loco.kind === "steam" && tr.status === "running") {
