@@ -24,7 +24,8 @@ export type Screen =
   | "end"
   | "cinematic"
   | "locodetail"
-  | "crisis";
+  | "crisis"
+  | "lobby";
 
 export interface HudSnap {
   cash: string;
@@ -45,6 +46,23 @@ export interface HudSnap {
   news: { headline: string; body: string; year: number; month: number } | null;
   crisis: { id: number; kind: string; label: string; bleed: number; status: string }[];
   yardCrews: string;
+}
+
+export interface NetPeerSnap {
+  id: string;
+  name: string;
+  state: string;
+  rttMs: number | null;
+}
+
+export interface NetSnap {
+  role: "solo" | "host" | "client";
+  code: string;
+  selfId: string;
+  hostId: string;
+  started: boolean;
+  names: Record<string, string>;
+  peers: NetPeerSnap[];
 }
 
 export interface LocoFocus {
@@ -73,6 +91,7 @@ interface UIState {
   inspectText: string;
   cinematic: Cinematic | null;
   locoFocus: LocoFocus | null;
+  net: NetSnap;
   setScreen: (s: Screen) => void;
   setOverlay: (s: Screen | null) => void;
   setTool: (t: Tool) => void;
@@ -84,6 +103,7 @@ interface UIState {
   setInspect: (t: string) => void;
   setCinematic: (c: Cinematic | null) => void;
   setLocoFocus: (f: LocoFocus | null) => void;
+  setNet: (n: NetSnap) => void;
 }
 
 export const emptyHud: HudSnap = {
@@ -158,6 +178,7 @@ export const useGameStore = create<UIState>((set) => ({
   inspectText: "",
   cinematic: null,
   locoFocus: null,
+  net: { role: "solo", code: "", selfId: "", hostId: "", started: false, names: {}, peers: [] },
   setScreen: (screen) => set({ screen, overlay: null }),
   setOverlay: (overlay) => set({ overlay }),
   setTool: (tool) => set({ tool }),
@@ -178,4 +199,5 @@ export const useGameStore = create<UIState>((set) => ({
   setInspect: (inspectText) => set({ inspectText }),
   setCinematic: (cinematic) => set({ cinematic }),
   setLocoFocus: (locoFocus) => set({ locoFocus }),
+  setNet: (net) => set({ net }),
 }));

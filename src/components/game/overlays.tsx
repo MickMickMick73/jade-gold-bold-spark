@@ -26,12 +26,13 @@ import { deleteSlot, listSaves, loadSlot, saveSettings, saveSlot, type SaveMeta 
 import { applySettings, sfx, unlockAudio } from "@/game/audio";
 import type { Difficulty, MapSize, Region, Speed, Tool } from "@/game/types";
 import { CARGO_LABEL, CARGOS } from "@/game/types";
-import { buyTrain, issueBond, repayBond, tradeStock } from "@/game/simulation";
+import { issueBond, repayBond, tradeStock } from "@/game/simulation";
 import { locosForYear, locoById } from "@/game/locomotives";
 import { netWorth, playerCompany } from "@/game/economy";
 import { CinematicOverlay } from "@/components/game/Cinematic";
 import { LocoSheet, LocoThumb } from "@/components/game/LocoSheet";
 import { CrisisPanel } from "@/components/game/Crisis";
+import { Lobby } from "@/components/game/Lobby";
 import { introCinematic, scenarioPoster, shouldPlayTitle, titleCinematic } from "@/game/cinematics";
 
 function Panel({
@@ -97,6 +98,16 @@ export function MainMenu() {
             }}
           >
             New empire
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            onClick={() => {
+              sfx("click");
+              setScreen("lobby");
+            }}
+          >
+            Play with friends
           </Button>
           <Button
             size="lg"
@@ -347,7 +358,7 @@ export function HowTo() {
       <div className="space-y-4 text-sm leading-relaxed text-muted">
         <p className="text-fg">You are a railroad charter. Turn dirt into dividends.</p>
         <ol className="list-decimal space-y-2 pl-4">
-          <li>Drag to lay track between towns. Hills, rivers and mountains cost more (bridges and tunnels).</li>
+          <li>Drag to lay track between towns. Hills, rivers and mountains cost more. Ocean needs a trestle — grow it from shore, eight tiles at most, $24,000 a span.</li>
           <li>Build a station on your track next to a city so cargo will wait on the platform.</li>
           <li>Buy a locomotive, hang cars, and click two or more stations for a route.</li>
           <li>Unpause time. Cities grow if you serve them, starve if you don't. New towns appear. Ports, highways and airfields arrive with the decades.</li>
@@ -364,7 +375,7 @@ export function HowTo() {
         <p>
           Highways (1915+) and airfields (1928+) steal passengers. Rail a port city and you skim the sea trade. Build your own strip with the Air tool once the twenties arrive.
         </p>
-        <p>Rivals lay their own iron. Beat the charter goals before the money runs out.</p>
+        <p>Rivals lay their own iron. Beat the charter goals before the money runs out. Play with friends on a shared map — one host, up to three other barons, each with their own company.</p>
       </div>
     </Panel>
   );
@@ -426,6 +437,7 @@ const TOOLS: { id: Tool; label: string; icon: typeof Search; key: string }[] = [
 
 export function HUD() {
   const hud = useGameStore((s) => s.hud);
+  const net = useGameStore((s) => s.net);
   const tool = useGameStore((s) => s.tool);
   const setTool = useGameStore((s) => s.setTool);
   const setOverlay = useGameStore((s) => s.setOverlay);
@@ -459,6 +471,7 @@ export function HUD() {
           </div>
           <div className="mt-1 truncate text-xs text-muted">
             {hud.company} · {hud.scenario}
+            {net.role !== "solo" ? ` · LIVE ${net.code}` : ""}
           </div>
         </div>
         <div className="pointer-events-auto flex flex-wrap items-center gap-1">
@@ -726,13 +739,9 @@ export function TrainBuy() {
   const loco = locoById(draft.locoId);
   const stations = state.stations.filter((s) => s.companyId === state.playerId);
   const launch = () => {
-    const tr = buyTrain(state, state.playerId, draft.locoId, draft.cars, draft.route, engine.hooks());
-    if (!tr) useGameStore.getState().setToast("Need two linked stations, a consist, and cash.");
-    else {
-      useGameStore.getState().setToast(`${tr.name} on the line`);
-      setDraft({ route: [] });
-      setOverlay(null);
-    }
+    engine.netAct({ op: "train", locoId: draft.locoId, cars: draft.cars, route: draft.route });
+    setDraft({ route: [] });
+    setOverlay(null);
     bump((n) => n + 1);
   };
   return (
@@ -898,6 +907,7 @@ export function OverlayRouter() {
       {which === "news" ? <NewsPanel /> : null}
       {which === "trainbuy" || which === "roster" ? <TrainBuy /> : null}
       {which === "end" ? <EndScreen /> : null}
+      {which === "lobby" ? <Lobby /> : null}
       {which === "cinematic" ? <CinematicOverlay /> : null}
       {which === "locodetail" ? <LocoSheet /> : null}
       {which === "crisis" ? <CrisisPanel /> : null}

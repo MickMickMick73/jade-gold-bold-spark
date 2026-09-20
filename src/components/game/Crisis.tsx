@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn, formatCash } from "@/lib/utils";
 import { useGameStore } from "@/game/store";
 import { getEngine } from "@/game/engine";
-import { INCIDENT_META, dispatchWrecker, rerouteAround, playerYard } from "@/game/yard";
+import { INCIDENT_META, playerYard } from "@/game/yard";
 import { X, Wrench } from "lucide-react";
 import { useState } from "react";
 
@@ -19,10 +19,11 @@ export function CrisisPanel() {
 
   const act = (id: number, kind: "wrecker" | "reroute" | "wait") => {
     if (kind === "wrecker") {
-      const err = dispatchWrecker(state, id, engine.hooks());
-      setNote(err ?? "Wrecker is on the road.");
+      engine.netAct({ op: "dispatch", incidentId: id });
+      setNote("Wrecker ordered.");
     } else if (kind === "reroute") {
-      setNote(rerouteAround(state, id, engine.hooks()));
+      engine.netAct({ op: "reroute", incidentId: id });
+      setNote("Looking for a way around.");
     } else {
       setNote("Time keeps bleeding until she clears — or a wrecker arrives.");
     }

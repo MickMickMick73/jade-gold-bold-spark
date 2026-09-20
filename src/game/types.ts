@@ -160,6 +160,7 @@ export interface Company {
   expenseYtd: number;
   bonds: Bond[];
   bankrupt: boolean;
+  peerId?: string;
 }
 
 export interface NewsItem {
@@ -287,6 +288,7 @@ export interface NewGameOpts {
   seed?: number;
   year?: number;
   scenario?: ScenarioDef;
+  humans?: { name: string; peerId: string }[];
 }
 
 export const SAVE_VERSION = 3;

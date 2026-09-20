@@ -275,12 +275,37 @@ function drawTrack(
   ctx.lineJoin = "round";
 
   if (opts?.bridge) {
-    ctx.strokeStyle = "#4a3a2a";
-    ctx.lineWidth = 7;
+    ctx.strokeStyle = "#3a2c20";
+    ctx.lineWidth = 8.5;
     for (const s of spans) {
       ctx.beginPath();
-      ctx.moveTo(s[0], s[1]);
-      ctx.lineTo(s[2], s[3]);
+      ctx.moveTo(s[0], s[1] + 3);
+      ctx.lineTo(s[2], s[3] + 3);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "#2a2218";
+    ctx.lineWidth = 1.6;
+    for (const s of spans) {
+      const dx = s[2] - s[0];
+      const dy = s[3] - s[1];
+      const len = Math.hypot(dx, dy) || 1;
+      const n = Math.max(2, Math.round(len / 7));
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const px = s[0] + dx * t;
+        const py = s[1] + dy * t;
+        ctx.beginPath();
+        ctx.moveTo(px - 1.2, py + 2);
+        ctx.lineTo(px + 0.6, py + 13);
+        ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = "#c4b49a";
+    ctx.lineWidth = 2.2;
+    for (const s of spans) {
+      ctx.beginPath();
+      ctx.moveTo(s[0], s[1] - 3.2);
+      ctx.lineTo(s[2], s[3] - 3.2);
       ctx.stroke();
     }
   }
@@ -581,7 +606,7 @@ export function renderWorld(
   for (const { x, y } of order) {
     const tile = state.tiles[y * state.mapW + x]!;
     if (!tile.track) continue;
-    const hOff = tile.t === "mountains" ? 0.35 : tile.t === "hills" ? 0.15 : 0;
+    const hOff = tile.t === "mountains" ? 0.35 : tile.t === "hills" ? 0.15 : tile.bridge ? 0.28 : 0;
     const p = worldToScreen(cam, x, y, hOff, cw, ch);
     const co = state.companies.find((c) => c.id === tile.owner);
     ctx.save();
@@ -605,12 +630,14 @@ export function renderWorld(
         if (occ.has(`${g.x + d.dx},${g.y + d.dy}`)) bits |= d.bit;
       }
       if (!bits) bits = N | S;
-      const p = worldToScreen(cam, g.x, g.y, 0, cw, ch);
+      const gt = tileAt(state, g.x, g.y);
+      const overWater = !!gt && (gt.t === "ocean" || gt.t === "river" || gt.t === "coast");
+      const p = worldToScreen(cam, g.x, g.y, overWater ? 0.28 : 0, cw, ch);
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.scale(z, z);
       diamond(ctx, 0, 0, "rgba(201,205,198,0.28)");
-      drawTrack(ctx, 0, 0, bits, "#d8d4cc");
+      drawTrack(ctx, 0, 0, bits, "#d8d4cc", { bridge: overWater });
       ctx.restore();
     }
     ctx.restore();
@@ -717,7 +744,9 @@ export function renderWorld(
 
   // Trains
   for (const tr of state.trains) {
-    const p = worldToScreen(cam, tr.x, tr.y, 0, cw, ch);
+    const tile = tileAt(state, Math.round(tr.x), Math.round(tr.y));
+    const lift = tile?.bridge ? 0.28 : 0;
+    const p = worldToScreen(cam, tr.x, tr.y, lift, cw, ch);
     const co = state.companies.find((c) => c.id === tr.companyId);
     const loco = locoById(tr.locoId);
     const dir = headingDir(tr.heading);

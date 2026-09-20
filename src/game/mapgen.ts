@@ -289,31 +289,35 @@ export function generateWorld(opts: NewGameOpts): GameState {
   const playerName = opts.companyName.trim() || "Player Line";
   const used = new Set<string>([playerName]);
   const rivals = sc?.rivals ?? opts.rivals;
-  const companies: Company[] = [
-    {
-      id: 1,
-      name: playerName,
-      color: COMPANY_COLORS[0],
+  const humans = opts.humans?.length ? opts.humans : [{ name: playerName, peerId: "" }];
+  const companies: Company[] = humans.map((h, i) => {
+    const name = (h.name.trim() || `Line ${i + 1}`).slice(0, 28);
+    used.add(name);
+    return {
+      id: i + 1,
+      name,
+      color: COMPANY_COLORS[i % COMPANY_COLORS.length]!,
       cash: sc?.cash ?? optsCash(opts),
       ai: false,
       stockPrice: 10,
       shares: 1000,
-      playerShares: 600,
+      playerShares: i === 0 ? 600 : 400,
       trackTiles: 0,
       trainsBuilt: 0,
       revenueYtd: 0,
       expenseYtd: 0,
       bonds: [],
       bankrupt: false,
-    },
-  ];
+      peerId: h.peerId || undefined,
+    };
+  });
   for (let i = 0; i < rivals; i++) {
     const name = aiCompanyName(rng, used);
     used.add(name);
     companies.push({
-      id: i + 2,
+      id: companies.length + 1,
       name,
-      color: COMPANY_COLORS[(i + 1) % COMPANY_COLORS.length]!,
+      color: COMPANY_COLORS[companies.length % COMPANY_COLORS.length]!,
       cash: companies[0]!.cash * (0.7 + rng.float(0, 0.3)),
       ai: true,
       stockPrice: 8 + rng.float(0, 4),

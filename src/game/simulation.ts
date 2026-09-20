@@ -15,7 +15,7 @@ import {
   type Tile,
   type Train,
 } from "./types";
-import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line4 } from "./pathfinding";
+import { idx, inBounds, pathForSurvey, pathOnTrack, tileAt, line4, canBridgeOcean } from "./pathfinding";
 import {
   avoidBlocked,
   ensureYard,
@@ -127,10 +127,11 @@ export function placeTrack(
   }
   const cost = buildCostFor(state, t);
   if (cost === null) return false;
+  if (t.t === "ocean" && !canBridgeOcean(state, x, y)) return false;
   if (!charge(state, companyId, cost)) return false;
   t.track = N | S;
   t.owner = companyId;
-  t.bridge = t.t === "river" || t.t === "coast";
+  t.bridge = t.t === "river" || t.t === "coast" || t.t === "ocean";
   t.tunnel = t.t === "mountains";
   refreshConnections(state, x, y);
   const c = state.companies.find((x) => x.id === companyId);
@@ -777,7 +778,7 @@ export function availableLocos(state: GameState): LocoDef[] {
   return locosForYear(state.year);
 }
 
-export function placePlayerAirport(state: GameState, x: number, y: number, hooks: SimHooks = noop): boolean {
+export function placePlayerAirport(state: GameState, x: number, y: number, hooks: SimHooks = noop, companyId = state.playerId): boolean {
   if (state.year < 1927) {
     hooks.news("Too soon", "Aeroplanes are still a carnival trick. Wait until the late twenties.");
     return false;
@@ -796,7 +797,7 @@ export function placePlayerAirport(state: GameState, x: number, y: number, hooks
   const pad = findAirfield(state, city.x, city.y);
   const ax = pad?.x ?? x;
   const ay = pad?.y ?? y;
-  if (!charge(state, state.playerId, 90000)) {
+  if (!charge(state, companyId, 90000)) {
     hooks.news("Short of cash", "An airfield costs $90,000.");
     return false;
   }

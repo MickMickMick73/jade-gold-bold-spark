@@ -61,8 +61,13 @@ class MinHeap {
   }
 }
 
+export function isWater(t: Tile): boolean {
+  return t.t === "ocean" || t.t === "river";
+}
+
+export const MAX_WATER_SPAN = 8;
+
 export function terrainBuildCost(t: Tile): number | null {
-  if (t.t === "ocean") return null;
   switch (t.t) {
     case "plains":
     case "coast":
@@ -77,6 +82,8 @@ export function terrainBuildCost(t: Tile): number | null {
       return 7000;
     case "river":
       return 14000;
+    case "ocean":
+      return 24000;
     case "mountains":
       return 18000;
     default:
@@ -252,4 +259,32 @@ export function line4(x0: number, y0: number, x1: number, y1: number): { x: numb
     if (out.length > 800) break;
   }
   return out;
+}
+
+/** Ocean trestles must grow from shore or existing bridge and stay within MAX_WATER_SPAN. */
+export function canBridgeOcean(state: GameState, x: number, y: number): boolean {
+  const t = tileAt(state, x, y);
+  if (!t || t.t !== "ocean") return true;
+  let rooted = false;
+  for (const d of DIRS) {
+    const n = tileAt(state, x + d.dx, y + d.dy);
+    if (!n) continue;
+    if (n.t !== "ocean") rooted = true;
+    if (n.track) rooted = true;
+  }
+  if (!rooted) return false;
+  const seen = new Set<string>();
+  const stack = [[x, y]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop()!;
+    const k = `${cx},${cy}`;
+    if (seen.has(k)) continue;
+    const tile = tileAt(state, cx, cy);
+    if (!tile || tile.t !== "ocean") continue;
+    if (!(cx === x && cy === y) && !tile.track) continue;
+    seen.add(k);
+    if (seen.size > MAX_WATER_SPAN) return false;
+    for (const d of DIRS) stack.push([cx + d.dx, cy + d.dy]);
+  }
+  return true;
 }

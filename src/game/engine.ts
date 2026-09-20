@@ -11,7 +11,8 @@ import { locoById } from "./locomotives";
 import { formatCashFull } from "@/lib/utils";
 import { endingCinematic, locoIntroCinematic } from "./cinematics";
 import { loadSprites } from "./sprites";
-import { openIncident } from "./yard";
+import { dispatchWrecker, openIncident, rerouteAround } from "./yard";
+import { applyTrack, getNet, packSnap, type NetCmd } from "./net";
 
 const PAN = 420;
 
@@ -63,11 +64,12 @@ export class Engine {
     this.raf = requestAnimationFrame(this.loop);
     this.installProbe();
     singleton = this;
+    this.wireNet();
     void loadSprites();
   }
 
   setSpeed(s: Speed) {
-    if (this.state) this.state.speed = s;
+    this.netAct({ op: "speed", speed: s });
   }
 
   attachMinimap(c: HTMLCanvasElement | null) {
@@ -383,7 +385,7 @@ export class Engine {
   onVis = () => {
     if (document.visibilityState === "hidden") {
       this.clearKeys();
-      if (this.mode === "play" && this.state) saveSlot(0, this.state);
+      if (this.mode === "play" && this.state && getNet().role !== "client") saveSlot(0, this.state);
     }
   };
 
@@ -392,29 +394,159 @@ export class Engine {
     const order: Speed[] = [0, 1, 2, 4, 8];
     const i = order.indexOf(this.state.speed);
     this.state.speed = order[Math.max(0, Math.min(order.length - 1, i + dir))]!;
+    this.netAct({ op: "speed", speed: this.state.speed });
   }
 
   applyPaint(x0: number, y0: number, x1: number, y1: number) {
     if (!this.state || this.mode !== "play") return;
     const tool = useGameStore.getState().tool;
-    const id = this.state.playerId;
-    if (tool === "track") placeTrackLine(this.state, x0, y0, x1, y1, id, this.hooks());
-    else if (tool === "bulldoze") {
-      for (const p of line4(x0, y0, x1, y1)) bulldoze(this.state, p.x, p.y, id, this.hooks());
-    }
+    if (tool === "track") this.netAct({ op: "track", x0, y0, x1, y1 });
+    else if (tool === "bulldoze") this.netAct({ op: "bulldoze", x0, y0, x1, y1 });
   }
 
   tryStation(x: number, y: number) {
     if (!this.state || this.mode !== "play") return;
-    const st = placeStation(this.state, x, y, this.state.playerId, this.hooks());
-    if (!st) useGameStore.getState().setToast("Need owned track, clear ground, and cash.");
-    else useGameStore.getState().setSelected("station", st.id);
+    this.netAct({ op: "station", x, y });
   }
 
   tryAirport(x: number, y: number) {
     if (!this.state || this.mode !== "play") return;
-    const ok = placePlayerAirport(this.state, x, y, this.hooks());
-    if (!ok) useGameStore.getState().setToast("Need $90,000, a nearby city, and the year 1927+.");
+    this.netAct({ op: "airport", x, y });
+  }
+
+  wireNet() {
+    getNet().setBind({
+      onStart: (msg) => this.acceptStart(msg),
+      onCmd: (companyId, cmd) => {
+        this.applyCmd(companyId, cmd);
+        if (this.state && getNet().role === "host") getNet().forceSnap(packSnap(this.state));
+      },
+      onSnap: (payload) => this.applySnap(payload),
+    });
+  }
+
+  acceptStart(msg: {
+    seed: number;
+    opts: import("./types").NewGameOpts;
+    seats: { peerId: string; companyId: number; name: string }[];
+  }) {
+    const humans = msg.seats.map((s) => ({ name: s.name, peerId: s.peerId }));
+    const state = generateWorld({ ...msg.opts, seed: msg.seed, humans });
+    const mine = msg.seats.find((s) => s.peerId === getNet().selfId);
+    if (mine) state.playerId = mine.companyId;
+    state.speed = 1;
+    this.startPlay(state);
+    useGameStore.getState().setOverlay(null);
+  }
+
+  netAct(cmd: NetCmd) {
+    if (!this.state || this.mode !== "play") return;
+    const net = getNet();
+    const id = this.state.playerId;
+    if (net.role === "client") {
+      this.applyCmd(id, cmd);
+      net.sendCmd(id, cmd);
+      return;
+    }
+    this.applyCmd(id, cmd);
+    if (net.role === "host") net.forceSnap(packSnap(this.state));
+  }
+
+  applyCmd(companyId: number, cmd: NetCmd) {
+    if (!this.state) return;
+    const hooks = this.hooks();
+    switch (cmd.op) {
+      case "track":
+        placeTrackLine(this.state, cmd.x0, cmd.y0, cmd.x1, cmd.y1, companyId, hooks);
+        break;
+      case "bulldoze":
+        for (const p of line4(cmd.x0, cmd.y0, cmd.x1, cmd.y1)) bulldoze(this.state, p.x, p.y, companyId, hooks);
+        break;
+      case "station": {
+        const st = placeStation(this.state, cmd.x, cmd.y, companyId, hooks);
+        if (!st && companyId === this.state.playerId) {
+          useGameStore.getState().setToast("Need owned track, clear ground, and cash.");
+        } else if (st && companyId === this.state.playerId) {
+          useGameStore.getState().setSelected("station", st.id);
+        }
+        break;
+      }
+      case "airport": {
+        const ok = placePlayerAirport(this.state, cmd.x, cmd.y, hooks, companyId);
+        if (!ok && companyId === this.state.playerId) {
+          useGameStore.getState().setToast("Need $90,000, a nearby city, and the year 1927+.");
+        }
+        break;
+      }
+      case "train": {
+        const tr = buyTrain(this.state, companyId, cmd.locoId, cmd.cars, cmd.route, hooks);
+        if (!tr && companyId === this.state.playerId) {
+          useGameStore.getState().setToast("Need two linked stations, a consist, and cash.");
+        } else if (tr && companyId === this.state.playerId) {
+          useGameStore.getState().setToast(`${tr.name} on the line`);
+        }
+        break;
+      }
+      case "dispatch": {
+        const err = dispatchWrecker(this.state, cmd.incidentId, hooks);
+        if (err && companyId === this.state.playerId) useGameStore.getState().setToast(err);
+        break;
+      }
+      case "reroute": {
+        const note = rerouteAround(this.state, cmd.incidentId, hooks);
+        if (companyId === this.state.playerId) useGameStore.getState().setToast(note);
+        break;
+      }
+      case "speed":
+        this.state.speed = cmd.speed;
+        break;
+    }
+  }
+
+  applySnap(payload: Record<string, unknown>) {
+    const s = this.state;
+    if (!s) return;
+    const p = payload as ReturnType<typeof packSnap>;
+    if (typeof p.year === "number") s.year = p.year;
+    if (typeof p.month === "number") s.month = p.month;
+    if (typeof p.day === "number") s.day = p.day;
+    if (typeof p.speed === "number") s.speed = p.speed as Speed;
+    if (typeof p.nextId === "number") s.nextId = p.nextId;
+    if (Array.isArray(p.track)) applyTrack(s, p.track);
+    if (p.trains) s.trains = p.trains;
+    if (p.stations) s.stations = p.stations;
+    if (p.incidents) s.incidents = p.incidents;
+    if (p.yards) s.yards = p.yards;
+    if (p.wreckers) s.wreckers = p.wreckers;
+    if (p.events) s.events = p.events;
+    if (p.companies) {
+      for (const row of p.companies) {
+        const c = s.companies.find((x) => x.id === row.id);
+        if (!c) continue;
+        c.cash = row.cash;
+        c.stockPrice = row.stockPrice;
+        c.trackTiles = row.trackTiles;
+        c.trainsBuilt = row.trainsBuilt;
+        c.revenueYtd = row.revenueYtd;
+        c.expenseYtd = row.expenseYtd;
+        c.bankrupt = row.bankrupt;
+      }
+    }
+    if (p.cities) {
+      for (const row of p.cities) {
+        const c = s.cities.find((x) => x.id === row.id);
+        if (!c) continue;
+        c.pop = row.pop;
+        c.cls = row.cls;
+        c.served = row.served;
+        c.growth = row.growth;
+        c.delivered = row.delivered;
+        c.hasPort = row.hasPort;
+        c.hasAirport = row.hasAirport;
+        c.highway = row.highway;
+      }
+    }
+    useGameStore.getState().setHud(snapHud(s));
   }
 
   pickStationForRoute(x: number, y: number) {
@@ -510,13 +642,17 @@ export class Engine {
     this.floats = this.floats.filter((f) => f.life > 0);
 
     if (this.mode === "play" && this.state && this.simulating()) {
-      this.state.playTime += dt;
-      const dps = daysPerSecond(this.state.speed);
-      this.acc += dt;
-      const step = 1 / 30;
-      while (this.acc >= step) {
-        this.acc -= step;
-        if (dps > 0) simulate(this.state, dps * step, this.hooks());
+      const net = getNet();
+      if (net.role !== "client") {
+        this.state.playTime += dt;
+        const dps = daysPerSecond(this.state.speed);
+        this.acc += dt;
+        const step = 1 / 30;
+        while (this.acc >= step) {
+          this.acc -= step;
+          if (dps > 0) simulate(this.state, dps * step, this.hooks());
+        }
+        if (net.role === "host") net.sendSnap(packSnap(this.state));
       }
       this.hudClock += dt;
       if (this.hudClock > 0.2) {
@@ -534,7 +670,7 @@ export class Engine {
       this.autosaveAt += dt;
       if (this.autosaveAt > 20) {
         this.autosaveAt = 0;
-        saveSlot(0, this.state);
+        if (getNet().role !== "client") saveSlot(0, this.state);
       }
     } else if (this.mode === "demo" && this.state) {
       simulate(this.state, 10 * dt, this.hooks());

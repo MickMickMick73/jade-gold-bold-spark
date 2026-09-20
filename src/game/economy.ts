@@ -30,6 +30,7 @@ export function buildCostFor(state: GameState, tile: Tile): number | null {
   if (base === null) return null;
   let c = base;
   if (tile.t === "river") c = 14000;
+  if (tile.t === "ocean") c = 24000;
   if (tile.t === "mountains") c = 18000;
   return Math.round(c * costMul(state.difficulty));
 }
