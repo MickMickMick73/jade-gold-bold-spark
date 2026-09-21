@@ -11,12 +11,25 @@ so the live site is on Grok's hosting behind the subdomain. CONFIRMED 2026-09-21
 `https://grok.com/grok-app-builder/extensions.js` — the game is hosted and built by
 **Grok's App Builder**; this repo is a one-way export. The live bundles do NOT
 contain strings that are in this export (e.g. "Pick at least two stations"), so the
-builder's source has moved on from the export. Therefore: deploy = apply the fixes
-inside the builder (Grok applies the patch under Claude's review, per the standing
-rule) and republish. Never push this repo over the live game. Patch file for the
-two ready fixes: `fixes/2026-09-21-route-toggle-and-launch-guard.patch`. Ask Mick
-whether the builder is linked to the GitHub repo (repo → builder), which would
-change this.
+builder's source has moved on from the export. **Deploy recipe (settled 2026-09-21, Mick: "it's on the BinaryLane server").**
+`ironbaron.mixapps.store` → the AU box (103.100.39.228), nginx vhost
+`/etc/nginx/sites-available/ironbaron`: static files from `/opt/ironbaron/public`,
+everything else proxied to `ironbaron.service` (`node /opt/ironbaron/server/index.mjs`,
+port 8792, user root). The repo is the source (push it too, `2041ec4`); Grok does not
+apply fixes; the Grok script tag in the page is just part of the export.
+Build: `VITE_AUTH_ENABLED=false npx vite build` (the `with-app-env` wrapper cannot
+spawn vite on Windows; the flag is all it adds). **The box needs the node-server preset** — `vite.config.ts` pinned
+`preset: "vercel"`, whose `index.mjs` is a request handler that exits at once (the
+service crash-looped "Deactivated successfully" and nginx gave 502 for a few minutes
+on 2026-09-21 21:09 until last night's `server` was restored from the backup). Now
+`preset: process.env.NITRO_PRESET ?? "vercel"`, so build with
+`NITRO_PRESET=node-server VITE_AUTH_ENABLED=false npx vite build` → `.output/public`
+= `public`, `.output/server` (`index.mjs` ~59 KB, listens on PORT) = `server`. Deploy: tar both, upload with
+`tools/ssh-mixmods-au.py --upload`, `cp -a /opt/ironbaron /opt/ironbaron.bak-<date>`,
+overlay `static/.` onto `public/` (the box's `public/sfx` is not in the build — never
+replace `public` whole), replace `server/` whole, `systemctl restart ironbaron`, then
+confirm the live page references the new `routes-*.js` and that asset contains the
+new string. `db:migrate` is not part of a client-only deploy.
 
 ## Ready (in source, type-check clean, not deployed)
 
@@ -46,9 +59,12 @@ change this.
 4. **Open sandbox mode** — Mick 2026-09-21: NOT unlimited cash. Unlimited
    *time*: normal money and normal economy, but no scenario goals, no game-over
    or "you lost" screen, no forced end — the calendar simply runs to the end of
-   the game clock and the player builds the empire. Needs: a "Sandbox" choice at
-   new game, a flag on `GameState`, the goal/bankruptcy/end checks in
-   `simulation.ts` honouring it, multiplayer snapshot carrying it.
+   the game clock and the player builds the empire. Mick, later the same day:
+   the scenario goals ("connect 14 cities" etc.) end the game just as it gets
+   going — so the **win condition is the host's choice at game start**: pick a
+   scenario goal, or none (open-ended). Needs: a "Win condition" option in the
+   new-game/lobby screen (host only), a flag on `GameState`, the goal/end checks
+   in `simulation.ts` honouring it, multiplayer snapshot carrying it.
 
 5. **Station cargo notice is vague** — "cargo is waiting at the station" without
    saying what. The inspector already has the answer (`describeStation`:
