@@ -1,0 +1,47 @@
+diff --git a/src/components/game/overlays.tsx b/src/components/game/overlays.tsx
+index 7945896..ff221b8 100644
+--- a/src/components/game/overlays.tsx
++++ b/src/components/game/overlays.tsx
+@@ -745,7 +745,9 @@ export function TrainBuy() {
+   const loco = locoById(draft.locoId);
+   const stations = state.stations.filter((s) => s.companyId === state.playerId);
+   const launch = () => {
++    const before = state.trains.length;
+     engine.netAct({ op: "train", locoId: draft.locoId, cars: draft.cars, route: draft.route });
++    if ((engine.state?.trains.length ?? before) === before) return;
+     setDraft({ route: [] });
+     setOverlay(null);
+     bump((n) => n + 1);
+@@ -826,10 +828,11 @@ export function TrainBuy() {
+           <button
+             key={s.id}
+             type="button"
+-            onClick={() => {
+-              if (draft.route.includes(s.id)) return;
+-              setDraft({ route: [...draft.route, s.id] });
+-            }}
++            onClick={() =>
++              setDraft({
++                route: draft.route.includes(s.id) ? draft.route.filter((id) => id !== s.id) : [...draft.route, s.id],
++              })
++            }
+             className={cn(
+               "h-9 rounded-sm px-3 text-xs",
+               draft.route.includes(s.id) ? "bg-primary text-primary-fg" : "bg-elevated text-fg",
+diff --git a/src/game/engine.ts b/src/game/engine.ts
+index 11262d9..6247413 100644
+--- a/src/game/engine.ts
++++ b/src/game/engine.ts
+@@ -567,9 +567,9 @@ export class Engine {
+       return;
+     }
+     const d = useGameStore.getState().trainDraft;
+-    if (d.route.includes(st.id)) return;
+-    useGameStore.getState().setDraft({ route: [...d.route, st.id] });
+-    useGameStore.getState().setToast(`Added ${st.name} to route`);
++    const listed = d.route.includes(st.id);
++    useGameStore.getState().setDraft({ route: listed ? d.route.filter((id) => id !== st.id) : [...d.route, st.id] });
++    useGameStore.getState().setToast(listed ? `Removed ${st.name} from route` : `Added ${st.name} to route`);
+     useGameStore.getState().setOverlay("trainbuy");
+   }
+ 

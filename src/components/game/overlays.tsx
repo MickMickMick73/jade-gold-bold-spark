@@ -745,7 +745,9 @@ export function TrainBuy() {
   const loco = locoById(draft.locoId);
   const stations = state.stations.filter((s) => s.companyId === state.playerId);
   const launch = () => {
+    const before = state.trains.length;
     engine.netAct({ op: "train", locoId: draft.locoId, cars: draft.cars, route: draft.route });
+    if ((engine.state?.trains.length ?? before) === before) return;
     setDraft({ route: [] });
     setOverlay(null);
     bump((n) => n + 1);
@@ -826,10 +828,11 @@ export function TrainBuy() {
           <button
             key={s.id}
             type="button"
-            onClick={() => {
-              if (draft.route.includes(s.id)) return;
-              setDraft({ route: [...draft.route, s.id] });
-            }}
+            onClick={() =>
+              setDraft({
+                route: draft.route.includes(s.id) ? draft.route.filter((id) => id !== s.id) : [...draft.route, s.id],
+              })
+            }
             className={cn(
               "h-9 rounded-sm px-3 text-xs",
               draft.route.includes(s.id) ? "bg-primary text-primary-fg" : "bg-elevated text-fg",

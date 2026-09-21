@@ -567,9 +567,9 @@ export class Engine {
       return;
     }
     const d = useGameStore.getState().trainDraft;
-    if (d.route.includes(st.id)) return;
-    useGameStore.getState().setDraft({ route: [...d.route, st.id] });
-    useGameStore.getState().setToast(`Added ${st.name} to route`);
+    const listed = d.route.includes(st.id);
+    useGameStore.getState().setDraft({ route: listed ? d.route.filter((id) => id !== st.id) : [...d.route, st.id] });
+    useGameStore.getState().setToast(listed ? `Removed ${st.name} from route` : `Added ${st.name} to route`);
     useGameStore.getState().setOverlay("trainbuy");
   }
 
